@@ -1,12 +1,14 @@
 -module(arg_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-%% Arg := {'Int', N} | {'Bool', B}; ret_type is a type-level function
+%% Arg := {'Int', Z} | {'Bool', B}; ret_type is a type-level function
 %% and is erased by extraction (absent from the module).
 
 doit_test() ->
     ?assertEqual(4, arg:doit({'Int', 3})),
     ?assertEqual(0, arg:doit({'Int', -1})),
+    ?assertEqual(-123456789012345678901234567889,
+                 arg:doit({'Int', -123456789012345678901234567890})),
     ?assertEqual('false', arg:doit({'Bool', 'true'})),
     ?assertEqual('true', arg:doit({'Bool', 'false'})).
 

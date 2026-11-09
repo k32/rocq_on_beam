@@ -132,6 +132,7 @@ let trans_var ctx n =
 let rec trans_apply ctx a =
   let rec spine acc = function
     | MLapp (f, args) -> spine (args @ acc) f
+    | MLmagic f -> spine acc f   (* unsafe cast: erased, look through *)
     | MLglob r -> `Glob (r, acc)
     | MLrel n -> `Rel (n, acc)
     | other -> `Dyn (other, acc)
