@@ -45,11 +45,11 @@ let global_name (r : global) : atom =
                 | None -> s
                 | Some code -> s ^ "_" ^ code)
 
-(* Erasure markers, also atoms (the rocq_ prefix is added when
-   printing, see Ceprint.unatom) *)
-let rocq_exn = Cerlang.Atom "exn"
-let rocq_dummy = Cerlang.Atom "dummy"
-let rocq_axiom = Cerlang.Atom "axiom"
+(* Erasure markers, also atoms: kept distinctive with a coq_ prefix
+   since they may collide with user constructor names otherwise *)
+let rocq_exn = Cerlang.Atom "coq_exn"
+let rocq_dummy = Cerlang.Atom "coq_dummy"
+let rocq_axiom = Cerlang.Atom "coq_axiom"
 
 (* -------------------------------------------------------------------- *)
 (* Translation context                                                   *)

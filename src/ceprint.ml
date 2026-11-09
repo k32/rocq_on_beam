@@ -23,11 +23,9 @@ let escape_atom s =
     s;
   Buffer.contents buf
 
-(* Render an atom as Core Erlang source: quoted, with the common
-   [rocq_] prefix prepended and any quotes escaped. This is the single
-   place where atoms are quoted, so every atom in the generated code
-   automatically carries the prefix. *)
-let unatom (Cerlang.Atom s) = "'rocq_" ^ escape_atom s ^ "'"
+(* Render an atom as Core Erlang source: quoted, with any quotes
+   escaped. This is the single place where atoms are quoted. *)
+let unatom (Cerlang.Atom s) = "'" ^ escape_atom s ^ "'"
 
 (* Render a variable: variables are created pre-sanitized by
    [Cetrans.fresh_var], so rendering is just unwrapping. *)

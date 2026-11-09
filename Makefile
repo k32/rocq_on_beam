@@ -23,7 +23,7 @@ space    := $(empty) $(empty)
 comma    := ,
 TESTLIST := $(subst $(space),$(comma),$(TESTS))
 
-CORES  := $(patsubst test/%.v,$(OUT)/rocq_%.core,$(VFILES))
+CORES  := $(patsubst test/%.v,$(OUT)/%.core,$(VFILES))
 BEAMS  := $(CORES:.core=.beam) $(patsubst %,$(OUT)/%.beam,$(TESTS))
 
 # keep the intermediate .core files (they are the extraction output)
@@ -55,12 +55,12 @@ build: $(STAMP)
 $(OUT):
 	mkdir -p $@
 
-$(OUT)/rocq_%.core: test/%.v $(STAMP) | $(OUT)
+$(OUT)/%.core: test/%.v $(STAMP) | $(OUT)
 	$(ROCQ) c -I $(PKGDIR) -R test "" $<
 
 # --- Core Erlang / EUnit suites -> BEAM (abstract rules) --------------
 
-$(OUT)/rocq_%.beam: $(OUT)/rocq_%.core | $(OUT)
+$(OUT)/%.beam: $(OUT)/%.core | $(OUT)
 	$(ERLC) -o $(OUT) $<
 
 $(OUT)/%_tests.beam: test/%_tests.erl | $(OUT)

@@ -89,7 +89,7 @@ let coreerlang_extraction_file ~opaque_access f l =
      filename is filesystem-safe *)
   let file =
     (if dir = "." then "" else dir ^ "/")
-    ^ "rocq_" ^ Ceprint.escape_atom base ^ ".core"
+    ^ Ceprint.escape_atom base ^ ".core"
   in
   let oc = open_out file in
   output_string oc (translate ~modname ~exported struc);
