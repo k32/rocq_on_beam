@@ -85,17 +85,17 @@ in c
    Rocq identifier is sanitized (Core Erlang variables must start with
    an uppercase letter or underscore; we always prefix with _) and
    made unique among the variables currently in scope. *)
-(* All Core Erlang variables in a function are generated from a single
-   per-function counter: [_v1], [_v2], ... Since the counter only ever
-   increases, generated names are unique within the function and can
+(* All Core Erlang variables in a function are identified by unique
+   integers from a single per-function counter; the printer turns them
+   into names ([_v1], [_v2], ...). Since the counter only ever
+   increases, identifiers are unique within the function and can
    neither collide with each other nor capture each other — including
    the eta-expansion parameters, which scope over translated arguments.
-   No name is ever derived from the Rocq identifier, so no sanitization
-   or collision checking is needed. (De Bruijn indices are still
-   resolved through the binder environment; the counter only names.) *)
+   (De Bruijn indices are still resolved through the binder environment;
+   the counter only identifies binders.) *)
 let fresh_var ctx =
   incr ctx.counter;
-  Cerlang.Var ("_v" ^ string_of_int !(ctx.counter))
+  Cerlang.Var !(ctx.counter)
 
 (* -------------------------------------------------------------------- *)
 (* Expressions                                                          *)
@@ -111,7 +111,7 @@ let trans_var ctx n =
   match List.nth_opt ctx.env (n - 1) with
   | Some (BVar v) -> Cerlang.EVar v
   | Some (BFun (f, arity)) -> Cerlang.EFunRef (f, arity)
-  | None -> Cerlang.EVar (Cerlang.Var "_invalid_debruijn")
+  | None -> Cerlang.EVar (Cerlang.Var 0)  (* invalid index; 0 never minted *)
 
 (* Application [MLapp (f, [a1;...;an])]. We first flatten the whole
    application spine (f is itself often an MLapp), then dispatch on the

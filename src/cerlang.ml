@@ -13,10 +13,10 @@
    time (see [Ceprint.unatom]). *)
 type atom = Atom of string
 
-(* Variables: binder names in the generated code. Also isomorphic to
-   [string]; created by [Cetrans.fresh_var], which sanitizes the Rocq
-   identifier and ensures uniqueness within the enclosing function. *)
-type var = Var of string
+(* Variables: binder names in the generated code, identified by a
+   unique integer (from a per-function counter, see [Cetrans.fresh_var]).
+   The concrete name is chosen at printing time ([Ceprint.unvar]). *)
+type var = Var of int
 
 type expr =
   | EVar of var                      (* a variable *)

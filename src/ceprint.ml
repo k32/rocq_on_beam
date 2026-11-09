@@ -27,9 +27,9 @@ let escape_atom s =
    escaped. This is the single place where atoms are quoted. *)
 let unatom (Cerlang.Atom s) = "'" ^ escape_atom s ^ "'"
 
-(* Render a variable: variables are created pre-sanitized by
-   [Cetrans.fresh_var], so rendering is just unwrapping. *)
-let unvar (Cerlang.Var s) = s
+(* Render a variable: variables are unique integers created by
+   [Cetrans.fresh_var]; the concrete name is derived here. *)
+let unvar (Cerlang.Var n) = "_v" ^ string_of_int n
 
 (* Note: in this Core Erlang dialect (OTP 26+), anonymous functions have
    no [end] keyword, [fun] bodies extend as far as possible, and case
