@@ -273,6 +273,37 @@ and trans_fix ctx i ids defs =
      - MLdummy  -> marker atom 'coq_dummy'   (erased argument)
      - MLexn    -> {'coq_exn', "reason"}     (e.g. unused definitions)
      - MLaxiom  -> {'coq_axiom', "name"}     (logical axiom used as data) *)
+and trans_case ctx t branches =
+  (* Core Erlang clauses need a guard, so every branch gets [when 'true'].
+     The scrutinee is let-bound so that the fallback clause (below) can
+     name it. Note: the scrutinee is NOT an implicit binder for the
+     branch bodies in MiniML, so the branches are translated under the
+     outer context; only the fallback clause mentions the let-bound
+     variable. *)
+  let v = fresh_var ctx in
+  let bs =
+    Array.to_list branches
+    |> List.map (fun (ids, pat, body) ->
+        (* branch idents are outermost-first; [Prel 1] = last *)
+        let ctx', names =
+          List.fold_left
+            (fun (ctx, names) id ->
+              let w = fresh_var ctx in
+              (push_binder (BVar w) ctx, names @ [w]))
+            (ctx, []) ids
+        in
+        (trans_pattern pat names, trans_expr ctx' body))
+  in
+  (* a compiler-generated last clause: a non-matching scrutinee raises
+     {'badmatch', Scrutinee} instead of a bare case failure *)
+  let fallback =
+    (Cerlang.PVar v,
+     Cerlang.EPrimop (Cerlang.Atom "match_fail",
+                      [Cerlang.ETuple [Cerlang.EAtom (Cerlang.Atom "badmatch");
+                                       Cerlang.EVar v]]))
+  in
+  Cerlang.ELet (v, trans_expr ctx t, Cerlang.ECase (Cerlang.EVar v, bs @ [fallback]))
+
 and trans_expr ctx a =
   let open Cerlang in
   match a with
@@ -283,19 +314,7 @@ and trans_expr ctx a =
   | MLglob r -> trans_global ctx r
   | MLcons (_, r, args) -> trans_cons ctx r args
   | MLtuple l -> ETuple (List.map (trans_expr ctx) l)
-  | MLcase (_, t, branches) ->
-    ECase (trans_expr ctx t,
-           Array.to_list branches
-           |> List.map (fun (ids, pat, body) ->
-               (* branch idents are outermost-first; [Prel 1] = last *)
-               let ctx, names =
-                 List.fold_left
-                   (fun (ctx, names) id ->
-                     let v = fresh_var ctx in
-                     (push_binder (BVar v) ctx, names @ [v]))
-                   (ctx, []) ids
-               in
-               (trans_pattern pat names, trans_expr ctx body)))
+  | MLcase (_, t, branches) -> trans_case ctx t branches
   | MLfix (i, ids, defs) -> trans_fix ctx i ids defs
   | MLexn s -> ETuple [EAtom marker_exn; EString s]
   | MLdummy _ -> EAtom marker_dummy

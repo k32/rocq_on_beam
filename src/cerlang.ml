@@ -35,6 +35,8 @@ type expr =
                                       (* letrec b1 ... bn in body *)
   | ECase of expr * (pattern * expr) list
                                       (* case e of <p> when 'true' -> e ... end *)
+  | EPrimop of atom * expr list
+                                      (* primop 'name' (args) *)
 
 and letrec_binding = {
   lr_name : atom;                     (* function name, e.g. fix_1_0 *)

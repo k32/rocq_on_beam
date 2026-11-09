@@ -65,6 +65,9 @@ let rec string_of_expr e =
     in
     "case " ^ string_of_expr t ^ " of "
     ^ String.concat " " (List.map br branches) ^ " end"
+  | EPrimop (p, args) ->
+    "primop " ^ unatom p ^ " ("
+    ^ String.concat "," (List.map string_of_expr args) ^ ")"
 
 and string_of_letrec_binding b =
   unatom b.lr_name ^ "/" ^ string_of_int (List.length b.lr_params)

@@ -28,3 +28,8 @@ fact_helper_test() ->
 
 sumlist_test() ->
     ?assertEqual(nat(3), rich:sumlist(lst([nat(1), nat(2)]))).
+
+%% a non-matching scrutinee hits the compiler-generated fallback clause
+%% and raises {'badmatch', Scrutinee}
+badmatch_test() ->
+    ?assertMatch({'EXIT', {{badmatch, two}, _}}, catch rich:len({cons, 1, two})).
