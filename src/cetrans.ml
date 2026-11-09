@@ -191,11 +191,13 @@ and trans_fun ctx a =
   Cerlang.EFun (params, trans_expr ctx body)
 
 (* A non-recursive binding:
-     [MLletin (x, e1, e2)] -> [let _x = e1 in e2] *)
+     [MLletin (x, e1, e2)] -> [let _vN = e1 in e2]
+   Note: the value [e1] is translated under the *outer* context (the
+   binder is not in scope in its own right-hand side). *)
 and trans_let ctx id a1 a2 =
   let v = fresh_var ctx in
-  let ctx = push_binder (BVar v) ctx in
-  Cerlang.ELet (v, trans_expr ctx a1, trans_expr ctx a2)
+  let ctx' = push_binder (BVar v) ctx in
+  Cerlang.ELet (v, trans_expr ctx a1, trans_expr ctx' a2)
 
 (* A global in value position (not applied):
      - one of our functions -> the fun reference ['f'/n]
