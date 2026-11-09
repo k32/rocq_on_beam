@@ -104,6 +104,19 @@ let erlang_call f args =
 
 let guard_true = Cerlang.EAtom (Cerlang.Atom "true")
 
+(* The Core Erlang backend bypasses Rocq's custom-extraction machinery
+   (its slots hold target-language source strings, which we would have
+   to parse back); native lowerings are hardwired instead. Make any
+   user-issued custom extraction fail loudly rather than be silently
+   ignored. *)
+let check_custom r what =
+  if Table.is_custom r || Table.is_inline_custom r || Table.is_foreign_custom r then
+    CErrors.user_err
+      Pp.(str "CoreErlang extraction: " ++ what ++ str " has a custom extraction"
+          ++ str " (Extract Constant / Inlined Constant / Inductive), which the"
+          ++ str " Core Erlang backend does not support: "
+          ++ Id.print (Table.label_of_r r))
+
 (* -------------------------------------------------------------------- *)
 (* Translation context                                                   *)
 (* -------------------------------------------------------------------- *)
@@ -352,6 +365,11 @@ and trans_case ctx t branches =
      are translated under the outer context; only the fallback clause
      mentions the let-bound variable. *)
   let v = fresh_var ctx in
+  if Table.is_custom_match branches then
+    CErrors.user_err
+      Pp.(str "CoreErlang extraction: this match has a custom match extraction"
+          ++ str " (Extract Inductive ... with a match function), which the"
+          ++ str " Core Erlang backend does not support");
   let is_O r = is_native r native_O in
   let is_S r = is_native r native_S in
   (* nat lowering: a match on O/S cannot become an arithmetic pattern,
@@ -502,6 +520,7 @@ let fundefs_of_decl exported d =
   match d with
   | Dind _ | Dtype _ -> []
   | Dterm (r, body, _) ->
+    check_custom r (Pp.str "constant");
     let ids, body' = Mlutil.collect_lams body in
     [ { fd_kn = Table.repr_of_r r; fd_name = global_name r;
         fd_ids = List.rev ids;
@@ -520,6 +539,7 @@ let fundefs_of_decl exported d =
           | MLfix (_, _, inner) -> Mlutil.collect_lams inner.(j)
           | b -> Mlutil.collect_lams b
         in
+        check_custom rv.(j) (Pp.str "fixpoint");
         { fd_kn = Table.repr_of_r rv.(j); fd_name = global_name rv.(j);
           fd_ids = List.rev idsl;
           fd_body = body';

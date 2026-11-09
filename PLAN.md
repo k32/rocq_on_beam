@@ -2,9 +2,10 @@
 
 Status: Phase 1 (1a `list`, 1b `prod`, 1c primitive `string` → binary)
 and Phase 2 (`nat` → integers, guarded matches, literal folding)
-**implemented**; Phase 3 partially (native tests exist; the
-`Table.is_custom` guard and README table updates are done, remaining:
-none).
+**implemented**, including the Phase 3 `Table.is_custom` guard: any
+user-issued custom extraction (Extract Constant / Inlined Constant /
+Inductive, custom match functions) now raises a clear error instead of
+being silently ignored.
 
 ## Goal
 
