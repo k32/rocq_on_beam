@@ -1,8 +1,8 @@
 -module(shadow_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-nat(0) -> 'O';
-nat(N) -> {'S', nat(N - 1)}.
+%% nat lowers to native integers now
+nat(N) -> N.
 
 %% Repeated shadowing of one name by let/lamda/fix binders:
 %%   x1 = x0+1; x2 = 2*x1; result = (x2+10) + x2  (== 4*(x0+1)+10)

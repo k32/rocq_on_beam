@@ -36,8 +36,9 @@ type expr =
   | ELet of var * expr * expr         (* let x = e1 in e2 *)
   | ELetrec of letrec_binding list * expr
                                       (* letrec b1 ... bn in body *)
-  | ECase of expr * (pattern * expr) list
-                                      (* case e of <p> when 'true' -> e ... end *)
+  | ECase of expr * (pattern * expr * expr) list
+                                      (* case e of <p> when g -> e ... end;
+                                         the guard is usually 'true' *)
   | EPrimop of atom * expr list
                                       (* primop 'name' (args) *)
 
@@ -53,6 +54,7 @@ and pattern =
   | PAtom of atom                     (* 'tag' *)
   | PNil                              (* [] *)
   | PCons of pattern * pattern        (* [P|P] *)
+  | PInt of string                    (* integer literal, e.g. 0 *)
   | PTuple of pattern list            (* {p1,...,pn} *)
 
 (* One toplevel function definition 'name'/n = fun (params) -> body.

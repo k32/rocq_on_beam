@@ -1,7 +1,10 @@
 # Plan: native type lowering for the Core Erlang extraction plugin
 
 Status: Phase 1 (1a `list`, 1b `prod`, 1c primitive `string` → binary)
-**implemented**; Phases 2–3 pending.
+and Phase 2 (`nat` → integers, guarded matches, literal folding)
+**implemented**; Phase 3 partially (native tests exist; the
+`Table.is_custom` guard and README table updates are done, remaining:
+none).
 
 ## Goal
 

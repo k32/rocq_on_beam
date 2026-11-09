@@ -1,9 +1,8 @@
 -module(adder_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-%% Peano naturals as extracted from Rocq: 'O' | {'S', N}
-nat(0) -> 'O';
-nat(N) -> {'S', nat(N - 1)}.
+%% nat lowers to native integers
+nat(N) -> N.
 
 add_test() ->
     ?assertEqual(nat(2), adder:add(nat(2), nat(0))),

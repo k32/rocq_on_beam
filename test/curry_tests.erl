@@ -1,8 +1,8 @@
 -module(curry_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-nat(0) -> 'O';
-nat(N) -> {'S', nat(N - 1)}.
+%% nat lowers to native integers now
+nat(N) -> N.
 
 add12_test() ->
     ?assertEqual(nat(6), curry:add12(nat(3))).

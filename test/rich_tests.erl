@@ -1,8 +1,8 @@
 -module(rich_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-nat(0) -> 'O';
-nat(N) -> {'S', nat(N - 1)}.
+%% nat lowers to native integers now
+nat(N) -> N.
 
 %% extracted lists are native Erlang lists now
 len_test() ->

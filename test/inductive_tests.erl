@@ -1,8 +1,8 @@
 -module(inductive_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-nat(0) -> 'O';
-nat(N) -> {'S', nat(N - 1)}.
+%% nat lowers to native integers now
+nat(N) -> N.
 
 %% tree := 'Leaf' | {'Node', N, L, R}
 tree(leaf) -> 'Leaf';

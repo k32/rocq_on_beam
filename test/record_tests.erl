@@ -1,8 +1,8 @@
 -module(record_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-nat(0) -> 'O';
-nat(N) -> {'S', nat(N - 1)}.
+%% nat lowers to native integers now
+nat(N) -> N.
 
 point(X, Y) -> {'mkPoint', X, Y}.
 
@@ -10,7 +10,7 @@ point(X, Y) -> {'mkPoint', X, Y}.
 %% the constructor name, and projections as matches on that tag.
 
 origin_test() ->
-    ?assertEqual(point('O', 'O'), record:origin()).
+    ?assertEqual(point(0, 0), record:origin()).
 
 projection_test() ->
     ?assertEqual(nat(3),
@@ -26,7 +26,7 @@ match_test() ->
 %% identity on functions and adder_wrapper is the wrapped function itself.
 
 apply_wrapped_test() ->
-    Succ = fun(X) -> {'S', X} end,
+    Succ = fun(X) -> X + 1 end,
     ?assertEqual(Succ, record:apply_wrapped(Succ)),
     ?assertEqual(nat(1), (record:apply_wrapped(Succ))(nat(0))).
 

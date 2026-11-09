@@ -73,8 +73,9 @@ let rec string_of_expr e =
     let b = List.map string_of_letrec_binding bindings in
     "letrec " ^ String.concat " " b ^ " in " ^ string_of_expr body
   | ECase (t, branches) ->
-    let br (p, e) =
-      "<" ^ string_of_pattern p ^ "> when 'true' -> " ^ string_of_expr e
+    let br (p, g, e) =
+      "<" ^ string_of_pattern p ^ "> when " ^ string_of_expr g
+      ^ " -> " ^ string_of_expr e
     in
     "case " ^ string_of_expr t ^ " of "
     ^ String.concat " " (List.map br branches) ^ " end"
@@ -94,6 +95,7 @@ and string_of_pattern p =
   | PAtom a -> unatom a
   | PNil -> "[]"
   | PCons (h, t) -> "[" ^ string_of_pattern h ^ "|" ^ string_of_pattern t ^ "]"
+  | PInt i -> i
   | PTuple l -> "{" ^ String.concat "," (List.map string_of_pattern l) ^ "}"
 
 let string_of_fundef fd =

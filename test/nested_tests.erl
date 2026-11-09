@@ -1,8 +1,8 @@
 -module(nested_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-nat(0) -> 'O';
-nat(N) -> {'S', nat(N - 1)}.
+%% nat lowers to native integers now
+nat(N) -> N.
 
 %% let-bound lambdas nested inside each other
 nested_test() ->

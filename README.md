@@ -40,7 +40,7 @@ expects.
 |------------------|----------------------------------------------------|
 | function         | `'name'/n = fun (X,Y) -> ...`                 |
 | inductive        | constructors become tagged tuples or atoms         |
-| `nat`            | `'O'` / `{'S', N}`                                 |
+| `nat`            | native integers: `0`, `N`; `S x` → `x+1`; matches use `<0>` / `when N > 0` + predecessor `let`; literal `S`-chains fold |
 | `list`           | native lists: `[]` / `[H\|T]`                      |
 | `prod`           | native untagged tuple `{X, Y}`                     |
 | prim. `string`   | native binary (one byte segment per character)     |

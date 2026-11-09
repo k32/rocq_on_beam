@@ -71,20 +71,38 @@ let locate_global names =
          with _ -> None))
     None names
 
-(* resolved lazily: the stdlib may not be loaded when the plugin loads *)
-let kn_of names = lazy (
-  match locate_global names with
-  | Some (GlobRef.ConstructRef ((mind, _), _) as g) ->
-    ignore mind; Some (Table.repr_of_r { glob = g; inst = InfvInst.empty })
-  | _ -> None)
+(* resolved lazily: the stdlib may not be loaded when the plugin loads.
+   We compare [GlobRef.t]s rather than kernel names: constructors of
+   one inductive share a KerName ([Table.repr_of_r] is not
+   constructor-specific), which would make O and S indistinguishable. *)
+let gr_of names = lazy (locate_global names)
 
-let native_nil  = kn_of ["Corelib.Init.Datatypes.nil"; "Stdlib.Datatypes.nil";  "Coq.Datatypes.nil"]
-let native_cons = kn_of ["Corelib.Init.Datatypes.cons"; "Stdlib.Datatypes.cons"; "Coq.Datatypes.cons"]
-let native_pair = kn_of ["Corelib.Init.Datatypes.pair"; "Stdlib.Datatypes.pair"; "Coq.Datatypes.pair"]
+let native_nil  = gr_of ["Corelib.Init.Datatypes.nil"; "Stdlib.Datatypes.nil";  "Coq.Datatypes.nil"]
+let native_cons = gr_of ["Corelib.Init.Datatypes.cons"; "Stdlib.Datatypes.cons"; "Coq.Datatypes.cons"]
+let native_pair = gr_of ["Corelib.Init.Datatypes.pair"; "Stdlib.Datatypes.pair"; "Coq.Datatypes.pair"]
+let native_O    = gr_of ["Corelib.Init.Datatypes.O";    "Stdlib.Init.Datatypes.O"; "Coq.Init.Datatypes.O"]
+let native_S    = gr_of ["Corelib.Init.Datatypes.S";    "Stdlib.Init.Datatypes.S"; "Coq.Init.Datatypes.S"]
 
-let is_native kn = function
-  | lazy (Some k) -> KerName.equal kn k
+let is_native (r : global) = function
+  | lazy (Some g) -> r.glob = g
   | lazy None -> false
+
+(* literal folding cap for S-chains: beyond this, unfold into
+   arithmetic calls instead of one huge integer *)
+let nat_fold_limit = 100000
+
+(* number of S constructors enclosing the O of a nat literal, if [t]
+   is a literal nat *)
+let rec nat_literal = function
+  | MLcons (_, r, []) when is_native r native_O -> Some 0
+  | MLcons (_, r, [t]) when is_native r native_S ->
+    Option.map (( + ) 1) (nat_literal t)
+  | _ -> None
+
+let erlang_call f args =
+  Cerlang.ECall (Cerlang.Atom "erlang", Cerlang.Atom f, args)
+
+let guard_true = Cerlang.EAtom (Cerlang.Atom "true")
 
 (* -------------------------------------------------------------------- *)
 (* Translation context                                                   *)
@@ -252,18 +270,28 @@ and trans_global ctx r =
      nil   -> []
      cons  -> [H|T]
      pair  -> {A,B}            (untagged tuple)
+     O     -> 0                (nat literals fold to one integer)
+     S x   -> call 'erlang':'+'(x, 1)
    Matching code destructures the same representations (see
-   trans_pattern). *)
+   trans_pattern and trans_case). *)
 and trans_constructor ctx r args =
   let open Cerlang in
-  let kn = Table.repr_of_r r in
-  if is_native kn native_nil && args = [] then ENil
-  else if is_native kn native_cons then
+  if is_native r native_O && args = [] then EInt "0"
+  else if is_native r native_S then
+    (match args with
+     | [t] ->
+       (match nat_literal (MLcons (Tunknown, r, [t])) with
+        | Some n when n <= nat_fold_limit -> EInt (string_of_int n)
+        | _ -> erlang_call "+" [trans_expr ctx t; EInt "1"])
+     | _ -> ETuple (EAtom (Cerlang.Atom "coq_bad_S")
+                    :: List.map (trans_expr ctx) args))
+  else if is_native r native_nil && args = [] then ENil
+  else if is_native r native_cons then
     (match args with
      | [h; t] -> ECons (trans_expr ctx h, trans_expr ctx t)
      | _ -> ETuple (EAtom (Cerlang.Atom "coq_bad_cons")
                     :: List.map (trans_expr ctx) args))
-  else if is_native kn native_pair then ETuple (List.map (trans_expr ctx) args)
+  else if is_native r native_pair then ETuple (List.map (trans_expr ctx) args)
   else
     let tag = Cerlang.Atom (Id.to_string (label_of_global r)) in
     match args with
@@ -317,13 +345,29 @@ and trans_fix ctx i ids defs =
      - MLexn    -> {'coq_exn', "reason"}     (e.g. unused definitions)
      - MLaxiom  -> {'coq_axiom', "name"}     (logical axiom used as data) *)
 and trans_case ctx t branches =
-  (* Core Erlang clauses need a guard, so every branch gets [when 'true'].
-     The scrutinee is let-bound so that the fallback clause (below) can
-     name it. Note: the scrutinee is NOT an implicit binder for the
-     branch bodies in MiniML, so the branches are translated under the
-     outer context; only the fallback clause mentions the let-bound
-     variable. *)
+  (* Core Erlang clauses need a guard, so every branch gets [when ...]
+     (usually just ['true']). The scrutinee is let-bound so that the
+     fallback clause (below) can name it. Note: the scrutinee is NOT an
+     implicit binder for the branch bodies in MiniML, so the branches
+     are translated under the outer context; only the fallback clause
+     mentions the let-bound variable. *)
   let v = fresh_var ctx in
+  let is_O r = is_native r native_O in
+  let is_S r = is_native r native_S in
+  (* nat lowering: a match on O/S cannot become an arithmetic pattern,
+     so branches are rewritten with a literal <0> pattern and a
+     positivity guard plus a predecessor binding:
+       O        ->  <0> when 'true' -> body
+       S p      ->  <_v> when _v > 0 -> let _p = _v - 1 in body *)
+  let nat_branch (_, pat, _) =
+    match pat with
+    | Pcons (r, []) when is_O r -> true
+    | Pcons (r, [_]) when is_S r -> true
+    | Pusual r when is_O r || is_S r -> true
+    | _ -> false
+  in
+  let all_nat =
+    Array.length branches > 0 && Array.for_all nat_branch branches in
   let bs =
     Array.to_list branches
     |> List.map (fun (ids, pat, body) ->
@@ -335,17 +379,36 @@ and trans_case ctx t branches =
               (push_binder (BVar w) ctx, names @ [w]))
             (ctx, []) ids
         in
-        (trans_pattern pat names, trans_expr ctx' body))
+        if all_nat then
+          if is_O_pat pat then
+            (Cerlang.PInt "0", guard_true, trans_expr ctx' body)
+          else begin
+            (* S branch: the (single) ident is the predecessor *)
+            let vp = match names with [x] -> x | _ -> fresh_var ctx' in
+            (Cerlang.PVar v,
+             erlang_call ">" [Cerlang.EVar v; Cerlang.EInt "0"],
+             Cerlang.ELet (vp,
+                           erlang_call "-" [Cerlang.EVar v; Cerlang.EInt "1"],
+                           trans_expr ctx' body))
+          end
+        else
+          (trans_pattern pat names, guard_true, trans_expr ctx' body))
   in
   (* a compiler-generated last clause: a non-matching scrutinee raises
      {'badmatch', Scrutinee} instead of a bare case failure *)
   let fallback =
-    (Cerlang.PVar v,
+    (Cerlang.PVar v, guard_true,
      Cerlang.EPrimop (Cerlang.Atom "match_fail",
                       [Cerlang.ETuple [Cerlang.EAtom (Cerlang.Atom "badmatch");
                                        Cerlang.EVar v]]))
   in
   Cerlang.ELet (v, trans_expr ctx t, Cerlang.ECase (Cerlang.EVar v, bs @ [fallback]))
+
+(* is the pattern a (nullary) O pattern? *)
+and is_O_pat = function
+  | Pcons (r, []) -> is_native r native_O
+  | Pusual r -> is_native r native_O
+  | _ -> false
 
 and trans_expr ctx a =
   let open Cerlang in
@@ -386,19 +449,17 @@ and trans_pattern pat names =
     | None -> PWild
   in
   let tag_of r = Cerlang.Atom (Id.to_string (label_of_global r)) in
-  let kn_of_pat r = Table.repr_of_r r in
   match pat with
   | Pwild -> PWild
   | Prel n -> prel n
   | Pcons (r, ps) ->
-    let kn = kn_of_pat r in
-    if is_native kn native_nil && ps = [] then PNil
-    else if is_native kn native_cons then
+    if is_native r native_nil && ps = [] then PNil
+    else if is_native r native_cons then
       (match ps with
        | [p; t] -> PCons (trans_pattern p names, trans_pattern t names)
        | _ -> PTuple (PAtom (Cerlang.Atom "coq_bad_cons")
                       :: List.map (fun p -> trans_pattern p names) ps))
-    else if is_native kn native_pair then
+    else if is_native r native_pair then
       PTuple (List.map (fun p -> trans_pattern p names) ps)
     else
       (match ps with
@@ -406,14 +467,13 @@ and trans_pattern pat names =
        | l -> PTuple (PAtom (tag_of r) :: List.map (fun p -> trans_pattern p names) l))
   | Ptuple ps -> PTuple (List.map (fun p -> trans_pattern p names) ps)
   | Pusual r ->
-    let kn = kn_of_pat r in
-    if is_native kn native_nil && names = [] then PNil
-    else if is_native kn native_cons then
+    if is_native r native_nil && names = [] then PNil
+    else if is_native r native_cons then
       (match names with
        | [h; t] -> PCons (PVar h, PVar t)
        | l -> PTuple (PAtom (Cerlang.Atom "coq_bad_cons")
                       :: List.map (fun v -> PVar v) l))
-    else if is_native kn native_pair then PTuple (List.map (fun v -> PVar v) names)
+    else if is_native r native_pair then PTuple (List.map (fun v -> PVar v) names)
     else
       let tag = tag_of r in
       (match names with

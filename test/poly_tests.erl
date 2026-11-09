@@ -1,8 +1,8 @@
 -module(poly_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-nat(0) -> 'O';
-nat(N) -> {'S', nat(N - 1)}.
+%% nat lowers to native integers now
+nat(N) -> N.
 
 %% type parameters are erased: the extracted functions are untyped,
 %% so they work on arbitrary 2-tuples {X, Y} (prod lowers to a
@@ -19,7 +19,7 @@ swap_test() ->
 
 %% even a type parameter instantiated with a function disappears:
 %% the function argument is applied dynamically
-succ(X) -> {'S', X}.
+succ(X) -> X + 1.
 
 mapfst_test() ->
     ?assertEqual({nat(1), 'tag'},
