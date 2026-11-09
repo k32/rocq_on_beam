@@ -28,4 +28,4 @@ Compute doit (Int 3).
 Compute doit (Int (-123456789012345678901234567890)).
 Compute doit (Bool true).
 
-CoreErlang Extraction "test_core/arg" doit.
+CoreErlang Extraction "test_core/dependent_arg" doit.
