@@ -7,6 +7,14 @@ user-issued custom extraction (Extract Constant / Inlined Constant /
 Inductive, custom match functions) now raises a clear error instead of
 being silently ignored.
 
+Additionally implemented (the "shortcut" Z lowering): `Z` → native
+integers via literal folding (exact, zarith-backed) plus a hardwired
+op table mapping the standard `Z` operations to Erlang BIFs; `Z`-level
+(`Z0/Zpos/Zneg`) and shallow `positive` (`xH/xO/xI`) matches rewrite
+to guarded clauses. Deep `positive` patterns are not rewritten (their
+containing functions should be covered by the op table; if reached
+they fail with badmatch).
+
 ## Goal
 
 Map Rocq datatypes with direct Erlang counterparts onto native Erlang

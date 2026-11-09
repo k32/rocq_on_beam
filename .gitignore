@@ -7,3 +7,5 @@ test_core/
 *.aux
 .lia.cache
 build/
+*~
+\#*\#

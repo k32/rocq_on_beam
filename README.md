@@ -41,6 +41,7 @@ expects.
 | function         | `'name'/n = fun (X,Y) -> ...`                 |
 | inductive        | constructors become tagged tuples or atoms         |
 | `nat`            | native integers: `0`, `N`; `S x` → `x+1`; matches use `<0>` / `when N > 0` + predecessor `let`; literal `S`-chains fold |
+| `Z` (ZArith)     | native integers: literals fold (exact, arbitrary precision); `Z.add/sub/mul/max/min/opp/abs/eqb/leb/ltb/compare/of_nat/to_nat` map to Erlang BIFs; user matches on `Z0/Zpos/Zneg` rewrite to guarded clauses |
 | `list`           | native lists: `[]` / `[H\|T]`                      |
 | `prod`           | native untagged tuple `{X, Y}`                     |
 | prim. `string`   | native binary (one byte segment per character)     |

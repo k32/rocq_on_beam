@@ -82,6 +82,13 @@ let native_cons = gr_of ["Corelib.Init.Datatypes.cons"; "Stdlib.Datatypes.cons";
 let native_pair = gr_of ["Corelib.Init.Datatypes.pair"; "Stdlib.Datatypes.pair"; "Coq.Datatypes.pair"]
 let native_O    = gr_of ["Corelib.Init.Datatypes.O";    "Stdlib.Init.Datatypes.O"; "Coq.Init.Datatypes.O"]
 let native_S    = gr_of ["Corelib.Init.Datatypes.S";    "Stdlib.Init.Datatypes.S"; "Coq.Init.Datatypes.S"]
+(* Z and positive constructors (binary integers) *)
+let native_Z0   = gr_of ["Corelib.Numbers.BinNums.Z0"]
+let native_Zpos = gr_of ["Corelib.Numbers.BinNums.Zpos"]
+let native_Zneg = gr_of ["Corelib.Numbers.BinNums.Zneg"]
+let native_xH   = gr_of ["Corelib.Numbers.BinNums.xH"]
+let native_xO   = gr_of ["Corelib.Numbers.BinNums.xO"]
+let native_xI   = gr_of ["Corelib.Numbers.BinNums.xI"]
 
 let is_native (r : global) = function
   | lazy (Some g) -> r.glob = g
@@ -99,10 +106,95 @@ let rec nat_literal = function
     Option.map (( + ) 1) (nat_literal t)
   | _ -> None
 
+(* value of a literal positive (binary: xH=1, xO p=2p, xI p=2p+1),
+   computed exactly with arbitrary-precision integers (zarith) *)
+let rec pos_literal = function
+  | MLcons (_, r, []) when is_native r native_xH -> Some Z.one
+  | MLcons (_, r, [t]) when is_native r native_xO ->
+    Option.map (fun p -> Z.mul (Z.of_int 2) p) (pos_literal t)
+  | MLcons (_, r, [t]) when is_native r native_xI ->
+    Option.map (fun p -> Z.add (Z.mul (Z.of_int 2) p) Z.one) (pos_literal t)
+  | _ -> None
+
+(* signed value of a literal Z *)
+let z_literal = function
+  | MLcons (_, r, []) when is_native r native_Z0 -> Some Z.zero
+  | MLcons (_, r, [t]) when is_native r native_Zpos -> pos_literal t
+  | MLcons (_, r, [t]) when is_native r native_Zneg -> Option.map Z.neg (pos_literal t)
+  | _ -> None
+
 let erlang_call f args =
   Cerlang.ECall (Cerlang.Atom "erlang", Cerlang.Atom f, args)
 
 let guard_true = Cerlang.EAtom (Cerlang.Atom "true")
+
+(* -------------------------------------------------------------------- *)
+(* Z library functions -> Erlang BIFs.                                  *)
+(*                                                                       *)
+(* We are not interested in Z's internal representation: the standard  *)
+(* operations are mapped wholesale to native Erlang calls, and literals *)
+(* fold to integers. If some other Z function recurses structurally on  *)
+(* the representation, its (shallow) matches are rewritten with guards; *)
+(* anything left fails loudly via badmatch.                             *)
+(* -------------------------------------------------------------------- *)
+
+type zop =
+  | Bin of string        (* 'erlang':'f'(A,B) *)
+  | Un of string         (* 'erlang':'f'(A) *)
+  | Const2 of string * int  (* 'erlang':'f'(A, c) *)
+  | Compare              (* 3-way case, returns 'Eq' | 'Lt' | 'Gt' *)
+  | Identity             (* fun X -> X *)
+
+let z_entries = [
+  ["Corelib.BinNums.IntDef.Z.add"; "Stdlib.ZArith.BinIntDef.Z.add"; "Stdlib.ZArith.BinInt.Z.add"], Bin "+";
+  ["Corelib.BinNums.IntDef.Z.sub"; "Stdlib.ZArith.BinIntDef.Z.sub"; "Stdlib.ZArith.BinInt.Z.sub"], Bin "-";
+  ["Corelib.BinNums.IntDef.Z.mul"; "Stdlib.ZArith.BinIntDef.Z.mul"; "Stdlib.ZArith.BinInt.Z.mul"], Bin "*";
+  ["Corelib.BinNums.IntDef.Z.max"; "Stdlib.ZArith.BinIntDef.Z.max"; "Stdlib.ZArith.BinInt.Z.max"], Bin "max";
+  ["Corelib.BinNums.IntDef.Z.min"; "Stdlib.ZArith.BinIntDef.Z.min"; "Stdlib.ZArith.BinInt.Z.min"], Bin "min";
+  ["Corelib.BinNums.IntDef.Z.opp"; "Stdlib.ZArith.BinIntDef.Z.opp"; "Stdlib.ZArith.BinInt.Z.opp"], Const2 ("-", 0);
+  ["Corelib.BinNums.IntDef.Z.succ"; "Stdlib.ZArith.BinIntDef.Z.succ"; "Stdlib.ZArith.BinInt.Z.succ"], Const2 ("+", 1);
+  ["Corelib.BinNums.IntDef.Z.pred"; "Stdlib.ZArith.BinIntDef.Z.pred"; "Stdlib.ZArith.BinInt.Z.pred"], Const2 ("-", 1);
+  ["Corelib.BinNums.IntDef.Z.abs"; "Stdlib.ZArith.BinIntDef.Z.abs"; "Stdlib.ZArith.BinInt.Z.abs"], Un "abs";
+  ["Corelib.BinNums.IntDef.Z.eqb"; "Stdlib.ZArith.BinIntDef.Z.eqb"; "Stdlib.ZArith.BinInt.Z.eqb"], Bin "=:=";
+  ["Corelib.BinNums.IntDef.Z.leb"; "Stdlib.ZArith.BinIntDef.Z.leb"; "Stdlib.ZArith.BinInt.Z.leb"], Bin "=<";
+  ["Corelib.BinNums.IntDef.Z.ltb"; "Stdlib.ZArith.BinIntDef.Z.ltb"; "Stdlib.ZArith.BinInt.Z.ltb"], Bin "<";
+  ["Corelib.BinNums.IntDef.Z.compare"; "Stdlib.ZArith.BinIntDef.Z.compare"; "Stdlib.ZArith.BinInt.Z.compare"], Compare;
+  ["Corelib.BinNums.IntDef.Z.of_nat"; "Stdlib.ZArith.BinIntDef.Z.of_nat"; "Stdlib.ZArith.BinInt.Z.of_nat"], Identity;
+  ["Corelib.BinNums.IntDef.Z.to_nat"; "Stdlib.ZArith.BinIntDef.Z.to_nat"; "Stdlib.ZArith.BinInt.Z.to_nat"], Identity;
+]
+
+let zops = lazy (
+  List.concat_map
+    (fun (qs, op) ->
+      List.filter_map (fun q ->
+          match locate_global [q] with
+          | Some g -> Some (g, op)
+          | None -> None) qs)
+    z_entries)
+
+let zop_of (r : global) =
+  let tbl = Lazy.force zops in
+  List.find_opt (fun (g, _) -> r.glob = g) tbl |> Option.map snd
+
+(* apply an operator to exactly [op_arity] argument expressions;
+   [fresh] mints a fresh variable (for the Compare case) *)
+let op_apply ~(fresh : unit -> Cerlang.var) op (args : Cerlang.expr list) : Cerlang.expr =
+  let open Cerlang in
+  match op, args with
+  | Bin f, [a; b] -> erlang_call f [a; b]
+  | Un f, [a] -> erlang_call f [a]
+  | Const2 (f, c), [a] -> erlang_call f [a; EInt (string_of_int c)]
+  | Identity, [a] -> a
+  | Compare, [a; b] ->
+    let x = fresh () in
+    ECase (a, [ (PVar x, erlang_call "=:=" [EVar x; b], EAtom (Atom "Eq"));
+                (PVar x, erlang_call "<" [EVar x; b], EAtom (Atom "Lt"));
+                (PVar x, guard_true, EAtom (Atom "Gt")) ])
+  | _ -> assert false
+
+(* the operator's arity *)
+let op_arity = function
+  | Bin _ -> 2 | Un _ -> 1 | Const2 _ -> 1 | Compare -> 2 | Identity -> 1
 
 (* The Core Erlang backend bypasses Rocq's custom-extraction machinery
    (its slots hold target-language source strings, which we would have
@@ -191,7 +283,32 @@ let rec trans_apply ctx a =
   in
   let open Cerlang in
   match spine [] a with
-  | `Glob (r, args) -> trans_global_call ctx r args
+  | `Glob (r, args) ->
+    (match zop_of r with
+     | Some op ->
+       (* Z library function: rewrite wholesale into an Erlang BIF
+          call, eta-expanding if partially applied *)
+       let n = op_arity op in
+       let printed = List.map (trans_expr ctx) args in
+       let rec take k = function
+         | [] -> []
+         | _ :: _ when k = 0 -> []
+         | h :: t -> h :: take (k - 1) t
+       in
+       if List.length args >= n
+       then op_apply ~fresh:(fun () -> fresh_var ctx) op (take n printed)
+       else
+         let miss = n - List.length args in
+         let extra, _ =
+           List.init miss (fun _ -> ())
+           |> List.fold_left (fun (acc, ctx) () ->
+               let w = fresh_var ctx in
+               (acc @ [w], push_binder (BVar w) ctx)) ([], ctx)
+         in
+         EFun (extra,
+               op_apply ~fresh:(fun () -> fresh_var ctx) op
+                 (printed @ List.map (fun w -> EVar w) extra))
+     | None -> trans_global_call ctx r args)
   | `Rel (n, args) ->
     EApply (trans_var ctx n, List.map (trans_expr ctx) args)
   | `Dyn (f, args) ->
@@ -271,9 +388,24 @@ and trans_global ctx r =
   match KerName.Map.find_opt kn ctx.funs with
   | Some (fname, arity) -> Cerlang.EFunRef (fname, arity)
   | None ->
-    CErrors.user_err
+    (match zop_of r with
+     | Some op ->
+       (* a Z library function used as a value: synthesize its closure *)
+       let n = op_arity op in
+       let vars, _ =
+         List.init n (fun _ -> ())
+         |> List.fold_left (fun (acc, ctx) () ->
+             let w = fresh_var ctx in
+             (acc @ [w], push_binder (BVar w) ctx)) ([], ctx)
+       in
+       Cerlang.EFun (vars,
+                     op_apply ~fresh:(fun () -> fresh_var ctx) op
+                       (List.map (fun w -> Cerlang.EVar w) vars))
+     | None ->
+       CErrors.user_err
       Pp.(str "CoreErlang extraction: global reference to an unextracted constant: "
-          ++ str (Id.to_string (Table.label_of_r r)))
+          ++ str (ModPath.to_string (Table.modpath_of_r r)) ++ str "."
+          ++ str (Id.to_string (Table.label_of_r r))))
 
 (* Constructor application. Most inductives have no Core Erlang
    counterpart and become a tagged tuple (nullary: a plain atom):
@@ -297,6 +429,37 @@ and trans_constructor ctx r args =
         | Some n when n <= nat_fold_limit -> EInt (string_of_int n)
         | _ -> erlang_call "+" [trans_expr ctx t; EInt "1"])
      | _ -> ETuple (EAtom (Cerlang.Atom "coq_bad_S")
+                    :: List.map (trans_expr ctx) args))
+  else if is_native r native_Z0 && args = [] then EInt "0"
+  else if is_native r native_Zpos then
+    (* a positive is lowered to its integer value: Zpos p = p *)
+    (match args with
+     | [t] ->
+       (match z_literal (MLcons (Tunknown, r, [t])) with
+        | Some n -> EInt (Z.to_string n)
+        | _ -> trans_expr ctx t)
+     | _ -> ETuple (EAtom (Cerlang.Atom "coq_bad_Zpos")
+                    :: List.map (trans_expr ctx) args))
+  else if is_native r native_Zneg then
+    (match args with
+     | [t] ->
+       (match z_literal (MLcons (Tunknown, r, [t])) with
+        | Some n -> EInt (Z.to_string n)
+        | _ -> erlang_call "-" [EInt "0"; trans_expr ctx t])
+     | _ -> ETuple (EAtom (Cerlang.Atom "coq_bad_Zneg")
+                    :: List.map (trans_expr ctx) args))
+  else if is_native r native_xH && args = [] then EInt "1"
+  else if is_native r native_xO || is_native r native_xI then
+    (match args with
+     | [t] ->
+       (match pos_literal (MLcons (Tunknown, r, [t])) with
+        | Some n -> EInt (Z.to_string n)
+        | _ ->
+           if is_native r native_xO
+           then erlang_call "*" [trans_expr ctx t; EInt "2"]
+           else erlang_call "+" [erlang_call "*" [trans_expr ctx t; EInt "2"];
+                                 EInt "1"])
+     | _ -> ETuple (EAtom (Cerlang.Atom "coq_bad_pos")
                     :: List.map (trans_expr ctx) args))
   else if is_native r native_nil && args = [] then ENil
   else if is_native r native_cons then
@@ -363,29 +526,54 @@ and trans_case ctx t branches =
      fallback clause (below) can name it. Note: the scrutinee is NOT an
      implicit binder for the branch bodies in MiniML, so the branches
      are translated under the outer context; only the fallback clause
-     mentions the let-bound variable. *)
+     mentions the let-bound variable.
+
+     Native lowering of matches: constructor patterns on the natively
+     lowered types cannot stay structural, so branches are rewritten
+     (see [rewrite_branch]); if any branch cannot be rewritten, the
+     whole match keeps its (tagged) translation and will fail loudly
+     with badmatch at runtime should it be reached. *)
   let v = fresh_var ctx in
   if Table.is_custom_match branches then
     CErrors.user_err
       Pp.(str "CoreErlang extraction: this match has a custom match extraction"
           ++ str " (Extract Inductive ... with a match function), which the"
           ++ str " Core Erlang backend does not support");
-  let is_O r = is_native r native_O in
-  let is_S r = is_native r native_S in
-  (* nat lowering: a match on O/S cannot become an arithmetic pattern,
-     so branches are rewritten with a literal <0> pattern and a
-     positivity guard plus a predecessor binding:
-       O        ->  <0> when 'true' -> body
-       S p      ->  <_v> when _v > 0 -> let _p = _v - 1 in body *)
-  let nat_branch (_, pat, _) =
+  (* try to rewrite one branch: returns Some (pattern, guard, binders)
+     where the binders are let-bound around the body. [name] is the
+     branch's single pattern variable, if any. *)
+  let rewrite_branch pat name =
+    let open Cerlang in
+    let no_binder pat' g = Some (pat', g, []) in
+    let one_var g mk = Some (PVar v, g, match name with
+                             | Some x -> [x, mk x]
+                             | None -> []) in
     match pat with
-    | Pcons (r, []) when is_O r -> true
-    | Pcons (r, [_]) when is_S r -> true
-    | Pusual r when is_O r || is_S r -> true
-    | _ -> false
+    | Pwild | Prel _ -> no_binder PWild guard_true
+    | Pcons (r, []) | Pusual r
+      when is_native r native_O || is_native r native_Z0 ->
+      no_binder (PInt "0") guard_true
+    | Pcons (r, []) | Pusual r when is_native r native_xH ->
+      no_binder (PInt "1") guard_true
+    | Pcons (r, [Pwild]) | Pcons (r, [Prel 1]) | Pusual r ->
+      let x = EVar v in
+      if is_native r native_S then
+        one_var (erlang_call ">" [x; EInt "0"])
+          (fun y -> erlang_call "-" [x; EInt "1"])
+      else if is_native r native_Zpos then
+        one_var (erlang_call ">" [x; EInt "0"]) (fun _ -> x)
+      else if is_native r native_Zneg then
+        one_var (erlang_call "<" [x; EInt "0"])
+          (fun _ -> erlang_call "-" [EInt "0"; x])
+      else if is_native r native_xO then
+        one_var (erlang_call "=:=" [erlang_call "band" [x; EInt "1"]; EInt "0"])
+          (fun _ -> erlang_call "bsr" [x; EInt "1"])
+      else if is_native r native_xI then
+        one_var (erlang_call "=:=" [erlang_call "band" [x; EInt "1"]; EInt "1"])
+          (fun _ -> erlang_call "bsr" [x; EInt "1"])
+      else None
+    | _ -> None
   in
-  let all_nat =
-    Array.length branches > 0 && Array.for_all nat_branch branches in
   let bs =
     Array.to_list branches
     |> List.map (fun (ids, pat, body) ->
@@ -397,19 +585,15 @@ and trans_case ctx t branches =
               (push_binder (BVar w) ctx, names @ [w]))
             (ctx, []) ids
         in
-        if all_nat then
-          if is_O_pat pat then
-            (Cerlang.PInt "0", guard_true, trans_expr ctx' body)
-          else begin
-            (* S branch: the (single) ident is the predecessor *)
-            let vp = match names with [x] -> x | _ -> fresh_var ctx' in
-            (Cerlang.PVar v,
-             erlang_call ">" [Cerlang.EVar v; Cerlang.EInt "0"],
-             Cerlang.ELet (vp,
-                           erlang_call "-" [Cerlang.EVar v; Cerlang.EInt "1"],
-                           trans_expr ctx' body))
-          end
-        else
+        let name = match names with [x] -> Some x | _ -> None in
+        match rewrite_branch pat name with
+        | Some (p, g, binders) when ids = [] || List.length ids = 1 ->
+          let body = trans_expr ctx' body in
+          let body =
+            List.fold_left (fun b (w, e) -> Cerlang.ELet (w, e, b)) body binders
+          in
+          (p, g, body)
+        | _ ->
           (trans_pattern pat names, guard_true, trans_expr ctx' body))
   in
   (* a compiler-generated last clause: a non-matching scrutinee raises
@@ -421,12 +605,6 @@ and trans_case ctx t branches =
                                        Cerlang.EVar v]]))
   in
   Cerlang.ELet (v, trans_expr ctx t, Cerlang.ECase (Cerlang.EVar v, bs @ [fallback]))
-
-(* is the pattern a (nullary) O pattern? *)
-and is_O_pat = function
-  | Pcons (r, []) -> is_native r native_O
-  | Pusual r -> is_native r native_O
-  | _ -> false
 
 and trans_expr ctx a =
   let open Cerlang in
