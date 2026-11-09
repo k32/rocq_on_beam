@@ -58,6 +58,18 @@ same monolithic module, as with the usual `Extraction "file" ...`.
 ## Building & testing
 
 ```sh
+make check   # build plugin + extract + compile + run the eunit suite
+make build   # build and stage the plugin only
+make clean   # remove test_core/
+```
+
+The Makefile rules are abstract: a new test `test/foo.v` (containing
+`CoreErlang Extraction "test_core/foo" ...`) plus `test/foo_tests.erl`
+is picked up automatically.
+
+Manual usage (equivalent steps):
+
+```sh
 dune build
 
 # stage the plugin so `Declare ML Module` finds it
@@ -67,7 +79,7 @@ for f in cmxs cma cmxa a; do
   ln -sf $PWD/_build/default/src/coreerlang_plugin.$f /tmp/pkg/coreerlang_plugin/
 done
 
-rocq c -I /tmp/pkg test/rich.v   # writes test_core/rocq_rich.core
+rocq c -I /tmp/pkg -R test "" test/rich.v   # writes test_core/rocq_rich.core
 erlc -o test_core test_core/*.core test/*_tests.erl
 erl -pa test_core -noshell -eval 'eunit:test([rich_tests], [verbose])' -s init stop
 ```
