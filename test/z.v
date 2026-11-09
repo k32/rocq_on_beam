@@ -32,6 +32,6 @@ Definition sgn (z : Z) : Z :=
   | Zneg _ => -1
   end.
 
-CoreErlang Extraction "test_core/z" export(fourtytwo) export(minus7) export(big)
-  export(sum) export(prod) export(mx) export(absdiff) export(cmp) export(eq)
-  export(half_away) export(ofn) export(ton) export(sgn).
+CoreErlang Extraction "test_core/z" fourtytwo minus7 big
+  sum prod mx absdiff cmp eq
+  half_away ofn ton sgn.

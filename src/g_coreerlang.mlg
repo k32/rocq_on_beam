@@ -14,13 +14,13 @@ open Pp
 open Coreerlang
 
 let pr_export_spec (x, e) =
-  if e then str "export(" ++ pr_qualid x ++ str ")" else pr_qualid x
+  if e then pr_qualid x else str "noexport(" ++ pr_qualid x ++ str ")"
 }
 
 VERNAC ARGUMENT EXTEND export_spec
   PRINTED BY { pr_export_spec }
-| [ "export" "(" global(x) ")" ] -> { (x, true) }
-| [ global(x) ] -> { (x, false) }
+| [ "noexport" "(" global(x) ")" ] -> { (x, false) }
+| [ global(x) ] -> { (x, true) }
 END
 
 {
@@ -28,8 +28,8 @@ END
 
 VERNAC COMMAND EXTEND CoreErlangExtraction CLASSIFIED AS QUERY STATE opaque_access
 (* Print the Core Erlang extraction of a global reference to stdout.
-   The reference may be marked [export] to list it in the module
-   exports (unmarked references are extracted but stay internal). *)
+   The reference may be marked [noexport(...)] to keep it out of the
+   module exports (by default every listed reference is exported). *)
 | [ "CoreErlang" "Extraction" export_spec(x) ] -> { coreerlang_extraction x }
 (* Monolithic extraction to a Core Erlang file *)
 | [ "CoreErlang" "Extraction" string(f) ne_export_spec_list(l) ]

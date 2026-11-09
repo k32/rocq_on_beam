@@ -14,4 +14,4 @@ Definition predn (n : nat) : nat :=
 
 Definition three : nat := S (S (S O)).
 
-CoreErlang Extraction "test_core/nat" export(big) export(predn) export(three).
+CoreErlang Extraction "test_core/nat" big predn three.

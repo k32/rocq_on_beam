@@ -16,13 +16,13 @@ Declare ML Module "coreerlang_plugin".
 CoreErlang Extraction add.
 
 (* write a monolithic .core file (dependencies included) *)
-CoreErlang Extraction "adder" export(add).
+CoreErlang Extraction "adder" add.
 ```
 
-References marked as `export(ref)` are listed in the module's exports.
-Unmarked references (and all pulled-in dependencies) are still
-extracted and callable from within the module, but stay internal —
-invisible from other Erlang modules.
+By default every listed reference is exported (its dependencies are
+pulled in but stay internal). A reference marked
+`noexport(ref)` is extracted and callable from within the module, but
+kept out of the module's exports.
 
 The generated file can be compiled with `erlc` and runs on BEAM:
 

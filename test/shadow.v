@@ -23,4 +23,4 @@ Definition shadowfix (x : nat) : nat :=
 Compute shadowlet 3.
 Compute shadowfix 5.
 
-CoreErlang Extraction "test_core/shadow" export(shadowlet) export(shadowfix).
+CoreErlang Extraction "test_core/shadow" shadowlet shadowfix.
