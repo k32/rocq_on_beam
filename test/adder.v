@@ -1,9 +1,11 @@
 Declare ML Module "coreerlang_plugin".
 
-Fixpoint add (n m : nat) : nat :=
-  match n with
-  | O => m
-  | S p => S (add p m)
+(* tail-recursive: the accumulator is the first argument, recursion on
+   the second (and the recursive call is in tail position) *)
+Fixpoint add (n m : nat) {struct m} : nat :=
+  match m with
+  | O => n
+  | S p => add (S n) p
   end.
 
 Compute add 2 3.
