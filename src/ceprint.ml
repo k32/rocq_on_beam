@@ -83,7 +83,7 @@ and string_of_pattern p =
 let string_of_fundef fd =
   unatom fd.fun_name ^ "/" ^ string_of_int (List.length fd.fun_params)
   ^ " =\n    fun (" ^ String.concat "," (List.map unvar fd.fun_params) ^ ") ->\n        "
-  ^ string_of_expr fd.fun_body ^ "\n"
+  ^ string_of_expr fd.fun_body ^ "\n\n"
 
 let string_of_module m =
   let buf = Buffer.create 4096 in
