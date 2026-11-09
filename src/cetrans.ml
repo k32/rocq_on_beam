@@ -139,31 +139,12 @@ let rec trans_apply ctx a =
   let open Cerlang in
   match spine [] a with
   | `Glob (r, args) ->
-    (match Cenative.zop_of r with
-     | Some op ->
-       (* Z library function: rewrite wholesale into an Erlang BIF
-          call, eta-expanding if partially applied *)
-       let n = Cenative.op_arity op in
-       let printed = List.map (trans_expr ctx) args in
-       let rec take k = function
-         | [] -> []
-         | _ :: _ when k = 0 -> []
-         | h :: t -> h :: take (k - 1) t
-       in
-       if List.length args >= n
-       then Cenative.op_apply ~fresh:(fun () -> fresh_var ctx) op (take n printed)
-       else
-         let miss = n - List.length args in
-         let extra, _ =
-           List.init miss (fun _ -> ())
-           |> List.fold_left (fun (acc, ctx) () ->
-               let w = fresh_var ctx in
-               (acc @ [w], push_binder (BVar w) ctx)) ([], ctx)
-         in
-         EFun (extra,
-               Cenative.op_apply ~fresh:(fun () -> fresh_var ctx) op
-                 (printed @ List.map (fun w -> EVar w) extra))
-     | None -> trans_global_call ctx r args)
+    if Cenative.is_native_call r then
+      (* Z library function: Cenative rewrites it wholesale into an
+         Erlang BIF call (eta-expanding if partially applied) *)
+      Cenative.translate_apply ~fresh:(fun () -> fresh_var ctx) r
+        (List.map (trans_expr ctx) args)
+    else trans_global_call ctx r args
   | `Rel (n, args) ->
     EApply (trans_var ctx n, List.map (trans_expr ctx) args)
   | `Dyn (f, args) ->
@@ -243,20 +224,11 @@ and trans_global ctx r =
   match KerName.Map.find_opt kn ctx.funs with
   | Some (fname, arity) -> Cerlang.EFunRef (fname, arity)
   | None ->
-    (match Cenative.zop_of r with
-     | Some op ->
-       (* a Z library function used as a value: synthesize its closure *)
-       let n = Cenative.op_arity op in
-       let vars, _ =
-         List.init n (fun _ -> ())
-         |> List.fold_left (fun (acc, ctx) () ->
-             let w = fresh_var ctx in
-             (acc @ [w], push_binder (BVar w) ctx)) ([], ctx)
-       in
-       Cerlang.EFun (vars,
-                     Cenative.op_apply ~fresh:(fun () -> fresh_var ctx) op
-                       (List.map (fun w -> Cerlang.EVar w) vars))
-     | None ->
+    (if Cenative.is_native_call r then
+       (* a Z library function used as a value: Cenative synthesizes
+          its closure *)
+       Cenative.translate_value ~fresh:(fun () -> fresh_var ctx) r
+     else
        CErrors.user_err
       Pp.(str "CoreErlang extraction: global reference to an unextracted constant: "
           ++ str (ModPath.to_string (Table.modpath_of_r r)) ++ str "."
@@ -277,14 +249,15 @@ and trans_global ctx r =
 and trans_constructor ctx r args =
   (* natively lowered constructors are handled by [Cenative];
      everything else falls back to the tagged encoding *)
-  match Cenative.constructor (trans_expr ctx) r args with
-  | Some e -> e
-  | None ->
+  if Cenative.is_native_constructor r then
+    Cenative.translate_constructor (trans_expr ctx) r args
+  else begin
     let open Cerlang in
     let tag = Cerlang.Atom (Id.to_string (label_of_global r)) in
-    (match args with
-     | [] -> EAtom tag
-     | l -> ETuple (EAtom tag :: List.map (trans_expr ctx) l))
+    match args with
+    | [] -> EAtom tag
+    | l -> ETuple (EAtom tag :: List.map (trans_expr ctx) l)
+  end
 
 (* Pattern translation, mirroring trans_constructor:
      [Pcons (r, ps)]  -> <tagged tuple pattern> / <atom pattern>
@@ -302,7 +275,7 @@ and trans_case ctx t branches =
      are translated under the outer context; only the fallback clause
      mentions the let-bound variable.
 
-     Native lowering of matches is decided by [Cenative.rewrite_branch]:
+     Native lowering of matches is decided by [Cenative.is_native_branch]:
      if any branch cannot be rewritten, the whole match keeps its
      (tagged) translation and will fail loudly with badmatch at
      runtime should it be reached. *)
@@ -325,14 +298,15 @@ and trans_case ctx t branches =
             (ctx, []) ids
         in
         let name = match names with [x] -> Some x | _ -> None in
-        match Cenative.rewrite_branch v pat name with
-        | Some (p, g, binders) when ids = [] || List.length ids = 1 ->
+        if Cenative.is_native_branch pat
+           && (ids = [] || List.length ids = 1) then begin
+          let (p, g, binders) = Cenative.translate_branch v pat name in
           let body = trans_expr ctx' body in
           let body =
             List.fold_left (fun b (w, e) -> Cerlang.ELet (w, e, b)) body binders
           in
           (p, g, body)
-        | _ ->
+        end else
           (trans_pattern pat names, guard_true, trans_expr ctx' body))
   in
   (* a compiler-generated last clause: a non-matching scrutinee raises
@@ -411,31 +385,26 @@ and trans_pattern pat names =
   | Pwild -> PWild
   | Prel n -> prel n
   | Pcons (r, ps) ->
-    (match Cenative.pattern (fun p -> trans_pattern p names) r ps with
-     | Some p -> p
-     | None ->
-       (* tagged fallback *)
-       let tag = Cerlang.Atom (Id.to_string (label_of_global r)) in
-       (match ps with
-        | [] -> PAtom tag
-        | l -> PTuple (PAtom tag :: List.map (fun p -> trans_pattern p names) l)))
+    if Cenative.is_native_pattern r then
+      Cenative.translate_pattern (fun p -> trans_pattern p names) r ps
+    else begin
+      (* tagged fallback *)
+      let tag = Cerlang.Atom (Id.to_string (label_of_global r)) in
+      match ps with
+      | [] -> PAtom tag
+      | l -> PTuple (PAtom tag :: List.map (fun p -> trans_pattern p names) l)
+    end
   | Ptuple ps -> PTuple (List.map (fun p -> trans_pattern p names) ps)
   | Pusual r ->
-    (* constructor applied to all its (named) args: query Cenative's
-       predicates for the natively lowered shapes *)
-    if Cenative.is_nil r && names = [] then PNil
-    else if Cenative.is_cons r then
-      (match names with
-       | [h; t] -> PCons (PVar h, PVar t)
-       | l -> PTuple (PAtom (Cerlang.Atom "coq_bad_cons") :: List.map (fun v -> PVar v) l))
-    else if Cenative.is_pair r then PTuple (List.map (fun v -> PVar v) names)
-    else if Cenative.is_O r || Cenative.is_Z0 r then PInt "0"
-    else if Cenative.is_xH r then PInt "1"
-    else
+    (* constructor applied to all its (named) args *)
+    if Cenative.is_native_usual r then
+      Cenative.translate_pattern_usual r names
+    else begin
       let tag = Cerlang.Atom (Id.to_string (label_of_global r)) in
-      (match names with
-       | [] -> PAtom tag
-       | l -> PTuple (PAtom tag :: List.map (fun v -> PVar v) l))
+      match names with
+      | [] -> PAtom tag
+      | l -> PTuple (PAtom tag :: List.map (fun v -> PVar v) l)
+    end
 
 (* -------------------------------------------------------------------- *)
 (* Declarations and whole structures                                     *)

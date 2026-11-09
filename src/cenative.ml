@@ -117,10 +117,13 @@ let z_literal = function
 (* Constructors and patterns                                             *)
 (* -------------------------------------------------------------------- *)
 
-(* Constructor translation for a natively lowered constructor.
-   [tr] translates argument expressions; returns [None] when [r] is
-   not a native constructor (the caller falls back to the tagged
-   encoding).
+let is_native_constructor (r : global) =
+  is_nil r || is_cons r || is_pair r || is_O r || is_S r || is_Z0 r
+  || is_Zpos r || is_Zneg r || is_xH r || is_xO r || is_xI r
+
+(* Constructor translation for a natively lowered constructor
+   (total when [is_native_constructor r] holds); [tr] translates
+   argument expressions.
 
      nil   -> []
      cons  -> [H|T]
@@ -129,77 +132,97 @@ let z_literal = function
      S x   -> call 'erlang':'+'(x, 1)
      Z0    -> 0;  Zpos p -> p;  Zneg p -> 0 - p
      xH    -> 1;  xO p -> 2*p;  xI p -> 2*p + 1 *)
-let constructor (tr : ml_ast -> Cerlang.expr) (r : global) (args : ml_ast list) :
-  Cerlang.expr option =
+let translate_constructor (tr : ml_ast -> Cerlang.expr) (r : global) (args : ml_ast list) :
+  Cerlang.expr =
   let open Cerlang in
   let bad name = ETuple (EAtom (Atom ("coq_bad_" ^ name)) :: List.map tr args) in
-  if is_nil r && args = [] then Some ENil
+  if is_nil r && args = [] then ENil
   else if is_cons r then
     (match args with
-     | [h; t] -> Some (ECons (tr h, tr t))
-     | _ -> Some (bad "cons"))
-  else if is_pair r then Some (ETuple (List.map tr args))
-  else if is_O r && args = [] then Some (EInt "0")
+     | [h; t] -> (ECons (tr h, tr t))
+     | _ -> (bad "cons"))
+  else if is_pair r then (ETuple (List.map tr args))
+  else if is_O r && args = [] then (EInt "0")
   else if is_S r then
     (match args with
      | [t] ->
        (match nat_literal (MLcons (Tunknown, r, [t])) with
-        | Some n when n <= nat_fold_limit -> Some (EInt (string_of_int n))
-        | _ -> Some (erlang_call "+" [tr t; EInt "1"]))
-     | _ -> Some (bad "S"))
-  else if is_Z0 r && args = [] then Some (EInt "0")
+        | Some n when n <= nat_fold_limit -> (EInt (string_of_int n))
+        | _ -> (erlang_call "+" [tr t; EInt "1"]))
+     | _ -> (bad "S"))
+  else if is_Z0 r && args = [] then (EInt "0")
   else if is_Zpos r then
     (* a positive is lowered to its integer value: Zpos p = p *)
     (match args with
      | [t] ->
        (match z_literal (MLcons (Tunknown, r, [t])) with
-        | Some n -> Some (EInt (Z.to_string n))
-        | _ -> Some (tr t))
-     | _ -> Some (bad "Zpos"))
+        | Some n -> (EInt (Z.to_string n))
+        | _ -> (tr t))
+     | _ -> (bad "Zpos"))
   else if is_Zneg r then
     (match args with
      | [t] ->
        (match z_literal (MLcons (Tunknown, r, [t])) with
-        | Some n -> Some (EInt (Z.to_string n))
-        | _ -> Some (erlang_call "-" [EInt "0"; tr t]))
-     | _ -> Some (bad "Zneg"))
-  else if is_xH r && args = [] then Some (EInt "1")
+        | Some n -> (EInt (Z.to_string n))
+        | _ -> (erlang_call "-" [EInt "0"; tr t]))
+     | _ -> (bad "Zneg"))
+  else if is_xH r && args = [] then (EInt "1")
   else if is_xO r || is_xI r then
     (match args with
      | [t] ->
        (match pos_literal (MLcons (Tunknown, r, [t])) with
-        | Some n -> Some (EInt (Z.to_string n))
+        | Some n -> (EInt (Z.to_string n))
         | _ ->
            if is_xO r
-           then Some (erlang_call "*" [tr t; EInt "2"])
-           else Some (erlang_call "+" [erlang_call "*" [tr t; EInt "2"];
+           then (erlang_call "*" [tr t; EInt "2"])
+           else (erlang_call "+" [erlang_call "*" [tr t; EInt "2"];
                                        EInt "1"]))
-     | _ -> Some (bad "pos"))
-  else None
+     | _ -> (bad "pos"))
+  else assert false
 
-(* Pattern translation for a natively lowered constructor with
-   sub-patterns [ps] ([sub] translates them); returns [None] when [r]
-   is not a native constructor. Only patterns that stay patterns
-   (lists, pairs, nullary literals) are handled here; arithmetic
-   matches (O/S, Z, positive) go through [rewrite_branch] instead.
-   Deep sub-patterns on arithmetic constructors are rejected
-   ([Some _ -> None] via the caller's tagged fallback). *)
-let pattern (sub : ml_pattern -> Cerlang.pattern) (r : global) (ps : ml_pattern list) :
-  Cerlang.pattern option =
+(* Patterns that can be expressed as patterns (lists, pairs, nullary
+   integer literals).  Arithmetic constructor patterns (O/S, Z,
+   positive) cannot: shallow occurrences go through [translate_branch]
+   instead, and deep ones have no native pattern at all. *)
+let is_native_pattern (r : global) =
+  is_nil r || is_cons r || is_pair r || is_O r || is_Z0 r || is_xH r
+
+(* [translate_pattern sub r ps] (total when [is_native_pattern r]);
+   [sub] translates the sub-patterns. *)
+let translate_pattern (sub : ml_pattern -> Cerlang.pattern)
+    (r : global) (ps : ml_pattern list) : Cerlang.pattern =
   let open Cerlang in
-  if is_nil r && ps = [] then Some PNil
+  if is_nil r && ps = [] then PNil
   else if is_cons r then
     (match ps with
-     | [h; t] -> Some (PCons (sub h, sub t))
-     | _ -> Some (PTuple [PAtom (Atom "coq_bad_cons")]))
-  else if is_pair r then Some (PTuple (List.map sub ps))
-  else if (is_O r || is_Z0 r) && ps = [] then Some (PInt "0")
-  else if is_xH r && ps = [] then Some (PInt "1")
-  else None
+     | [h; t] -> PCons (sub h, sub t)
+     | _ -> PTuple [PAtom (Atom "coq_bad_cons")])
+  else if is_pair r then PTuple (List.map sub ps)
+  else if (is_O r || is_Z0 r) && ps = [] then PInt "0"
+  else if is_xH r && ps = [] then PInt "1"
+  else assert false
+
+(* Pusual: constructor applied to all its (named) arguments *)
+let is_native_usual (r : global) =
+  is_nil r || is_cons r || is_pair r || is_O r || is_Z0 r || is_xH r
+
+let translate_pattern_usual (r : global) (names : Cerlang.var list) :
+  Cerlang.pattern =
+  let open Cerlang in
+  if is_nil r && names = [] then PNil
+  else if is_cons r then
+    (match names with
+     | [h; t] -> PCons (PVar h, PVar t)
+     | l -> PTuple (PAtom (Atom "coq_bad_cons") :: List.map (fun v -> PVar v) l))
+  else if is_pair r then PTuple (List.map (fun v -> PVar v) names)
+  else if is_O r || is_Z0 r then PInt "0"
+  else if is_xH r then PInt "1"
+  else assert false
 
 (* -------------------------------------------------------------------- *)
 (* Match branches                                                        *)
 (* -------------------------------------------------------------------- *)
+
 
 (* Rewrite one match branch for the natively lowered arithmetic
    types, whose constructor patterns cannot stay structural:
@@ -245,6 +268,21 @@ let rewrite_branch (v : Cerlang.var) (pat : ml_pattern) (name : Cerlang.var opti
         (fun _ -> erlang_call "bsr" [x; EInt "1"])
     else None
   | _ -> None
+
+(* Query + total entry point for the branch rewrite below *)
+
+let translate_branch (v : Cerlang.var) (pat : ml_pattern)
+    (name : Cerlang.var option) :
+  (Cerlang.pattern * Cerlang.expr * (Cerlang.var * Cerlang.expr) list) =
+  match rewrite_branch v pat name with
+  | Some b -> b
+  | None -> assert false
+
+let is_native_branch (pat : ml_pattern) =
+  rewrite_branch (Cerlang.Var 0) pat None <> None
+
+
+
 
 (* -------------------------------------------------------------------- *)
 (* Z library functions -> Erlang BIFs.                                   *)
@@ -318,3 +356,44 @@ let op_apply ~(fresh : unit -> Cerlang.var) op (args : Cerlang.expr list) : Cerl
 (* the operator's arity *)
 let op_arity = function
   | Bin _ -> 2 | Un _ -> 1 | Const2 _ -> 1 | Compare -> 2 | Identity -> 1
+
+(* -------------------------------------------------------------------- *)
+(* Query interface used by [cetrans]                                     *)
+(*                                                                       *)
+(*  Boolean queries ([is_native_call], [is_native_constructor], ...)      *)
+(*  decide; the [translate_*] functions take control and receive the     *)
+(*  already-translated arguments / a translation continuation.           *)
+(* -------------------------------------------------------------------- *)
+
+(* ---- applications of Z library functions ---- *)
+
+let is_native_call (r : global) = zop_of r <> None
+
+(* [translate_apply ~fresh r args] handles an application of a Z
+   library function to already-translated [args], eta-expanding when
+   the application is partial (Core Erlang calls are uncurried). *)
+let translate_apply ~(fresh : unit -> Cerlang.var) (r : global)
+    (args : Cerlang.expr list) : Cerlang.expr =
+  let op = match zop_of r with Some o -> o | None -> assert false in
+  let n = op_arity op in
+  let rec take k = function
+    | [] -> []
+    | _ :: _ when k = 0 -> []
+    | h :: t -> h :: take (k - 1) t
+  in
+  if List.length args >= n then op_apply ~fresh op (take n args)
+  else
+    let miss = n - List.length args in
+    let extra = List.init miss (fun _ -> fresh ()) in
+    Cerlang.EFun (extra,
+                  op_apply ~fresh op
+                    (args @ List.map (fun w -> Cerlang.EVar w) extra))
+
+(* a Z library function used as a value: synthesize its closure *)
+let translate_value ~(fresh : unit -> Cerlang.var) (r : global) : Cerlang.expr =
+  let op = match zop_of r with Some o -> o | None -> assert false in
+  let n = op_arity op in
+  let vars = List.init n (fun _ -> fresh ()) in
+  Cerlang.EFun (vars,
+                op_apply ~fresh op
+                  (List.map (fun w -> Cerlang.EVar w) vars))
