@@ -93,7 +93,8 @@ erl -pa test_core -noshell -eval 'eunit:test([rich_tests], [verbose])' -s init s
 ## Layout
 
 - `src/cerlang.ml` — the Core Erlang AST (`expr`, `pattern`, `fundef`, `module_`)
-- `src/cetrans.ml` — phase 1: MiniML → Core Erlang AST (name resolution, de Bruijn → variables, eta-expansion, constructor tagging)
+- `src/cenative.ml` — native type lowering: constructor registry (list/pair/nat/Z/positive), literal folding, Z op → BIF table, constructor/pattern/match-branch rewrites
+- `src/cetrans.ml` — phase 1: MiniML → Core Erlang AST (de Bruijn resolution, eta-expansion, fixpoints); queries `Cenative` for all native decisions
 - `src/ceprint.ml` — phase 2: Core Erlang AST → concrete syntax (pure pretty-printing)
 - `src/coreerlang.ml` — glue: drives Rocq's extraction, then the two phases; vernac entry points
 - `src/g_coreerlang.mlg` — the `CoreErlang Extraction` vernacular (via `rocq pp-mlg`)
