@@ -94,7 +94,7 @@ let string_of_module m =
       Buffer.add_string buf
         (string_of_fun_ref fd.fun_name (List.length fd.fun_params)))
     exported;
-  Buffer.add_string buf "] attributes []\n";
+  Buffer.add_string buf "] attributes []\n\n";
   List.iter (fun fd -> Buffer.add_string buf (string_of_fundef fd)) m.mod_funcs;
   Buffer.add_string buf "end\n";
   Buffer.contents buf
