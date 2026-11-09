@@ -87,12 +87,13 @@ let string_of_fundef fd =
 
 let string_of_module m =
   let buf = Buffer.create 4096 in
+  let exported = List.filter (fun fd -> fd.fun_exported) m.mod_funcs in
   Buffer.add_string buf ("module " ^ unatom m.mod_name ^ " [");
   List.iteri (fun i fd ->
       if i > 0 then Buffer.add_string buf ",";
       Buffer.add_string buf
         (string_of_fun_ref fd.fun_name (List.length fd.fun_params)))
-    m.mod_funcs;
+    exported;
   Buffer.add_string buf "] attributes []\n";
   List.iter (fun fd -> Buffer.add_string buf (string_of_fundef fd)) m.mod_funcs;
   Buffer.add_string buf "end\n";

@@ -1,17 +1,37 @@
 {
 open Stdarg
+open Libnames
+
+(* the parsing entry for a global reference, needed to define the
+   [export_spec] argument below (coqpp refers to it unqualified) *)
+let global = Procq.Constr.global
 }
 
 DECLARE PLUGIN "coreerlang_plugin"
 
 {
+open Pp
 open Coreerlang
+
+let pr_export_spec (x, e) =
+  pr_qualid x ++ if e then str " export" else mt ()
+}
+
+VERNAC ARGUMENT EXTEND export_spec
+  PRINTED BY { pr_export_spec }
+| [ global(x) "export" ] -> { (x, true) }
+| [ global(x) ] -> { (x, false) }
+END
+
+{
 }
 
 VERNAC COMMAND EXTEND CoreErlangExtraction CLASSIFIED AS QUERY STATE opaque_access
-(* Print the Core Erlang extraction of a global reference to stdout *)
-| [ "CoreErlang" "Extraction" global(x) ] -> { coreerlang_extraction x }
-(* Monolithic extraction of a list of references to a Core Erlang file *)
-| [ "CoreErlang" "Extraction" string(f) ne_global_list(l) ]
+(* Print the Core Erlang extraction of a global reference to stdout.
+   The reference may be marked [export] to list it in the module
+   exports (unmarked references are extracted but stay internal). *)
+| [ "CoreErlang" "Extraction" export_spec(x) ] -> { coreerlang_extraction x }
+(* Monolithic extraction to a Core Erlang file *)
+| [ "CoreErlang" "Extraction" string(f) ne_export_spec_list(l) ]
   -> { coreerlang_extraction_file f l }
 END

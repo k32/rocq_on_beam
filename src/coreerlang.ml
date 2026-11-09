@@ -41,8 +41,9 @@ let extract_structure ~opaque_access refs =
   Table.warning_axioms (Common.State.get_table state);
   struc
 
-let translate ~modname struc =
-  Ceprint.string_of_module (Cetrans.translate_structure ~modname struc)
+let translate ~modname ?exported struc =
+  Ceprint.string_of_module
+    (Cetrans.translate_structure ~modname ?exported struc)
 
 let modname_of_qualid qid =
   match locate_ref qid with
@@ -53,13 +54,31 @@ let modname_of_qualid qid =
 (* The vernacular entry points                                          *)
 (* -------------------------------------------------------------------- *)
 
-let coreerlang_extraction ~opaque_access x =
+let coreerlang_extraction ~opaque_access (x, exported) =
   let refs = locate_ref x in
   let struc = extract_structure ~opaque_access refs in
-  Feedback.msg_notice Pp.(str (translate ~modname:(modname_of_qualid x) struc))
+  let exported =
+    if exported then
+      List.fold_left (fun s r -> KerName.Set.add (Table.repr_of_r r) s)
+        KerName.Set.empty refs
+    else KerName.Set.empty
+  in
+  Feedback.msg_notice Pp.(str (translate ~modname:(modname_of_qualid x) ~exported struc))
 
 let coreerlang_extraction_file ~opaque_access f l =
-  let refs = List.concat_map locate_ref l in
+  let refs, exported =
+    List.fold_left
+      (fun (refs, exported) (x, export) ->
+         let rs = locate_ref x in
+         let exported' =
+           if export then
+             List.fold_left (fun acc r -> KerName.Set.add (Table.repr_of_r r) acc)
+               exported rs
+           else exported
+         in
+         (refs @ rs, exported'))
+      ([], KerName.Set.empty) l
+  in
   let struc = extract_structure ~opaque_access refs in
   (* module name gets the common rocq_ prefix; the output file is named
      after the module so that erlc accepts it *)
@@ -73,6 +92,6 @@ let coreerlang_extraction_file ~opaque_access f l =
     ^ "rocq_" ^ Ceprint.escape_atom base ^ ".core"
   in
   let oc = open_out file in
-  output_string oc (translate ~modname struc);
+  output_string oc (translate ~modname ~exported struc);
   close_out oc;
   Feedback.msg_info Pp.(str ("Core Erlang extraction written to " ^ file))

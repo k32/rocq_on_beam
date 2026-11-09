@@ -340,22 +340,25 @@ and trans_pattern pat names =
 (* -------------------------------------------------------------------- *)
 
 (* One toplevel function in the making: its lambda identifiers
-   (outermost-first), the body under the lambdas, and the initial
-   binder environment (fixpoint group, if any). *)
+   (outermost-first), the body under the lambdas, the initial
+   binder environment (fixpoint group, if any), and whether it is
+   exported (listed in the module exports) or internal. *)
 type fdef = {
   fd_name : atom;
   fd_ids : ml_ident list;      (* outermost-first *)
   fd_body : ml_ast;            (* body under the lambdas and the group *)
   fd_group : binder list;      (* innermost-first, for MLfix groups *)
+  fd_exported : bool;
 }
 
-let fundefs_of_decl d =
+let fundefs_of_decl exported d =
+  let is_exported r = KerName.Set.mem (Table.repr_of_r r) exported in
   match d with
   | Dind _ | Dtype _ -> []
   | Dterm (r, body, _) ->
     let ids, body' = Mlutil.collect_lams body in
     [ { fd_name = global_name r; fd_ids = List.rev ids;
-        fd_body = body'; fd_group = [] } ]
+        fd_body = body'; fd_group = []; fd_exported = is_exported r } ]
   | Dfix (rv, defs, _) ->
     let k = Array.length rv in
     let arity j = match defs.(j) with
@@ -373,12 +376,16 @@ let fundefs_of_decl d =
         { fd_name = global_name rv.(j);
           fd_ids = List.rev idsl;
           fd_body = body';
-          fd_group = group })
+          fd_group = group;
+          fd_exported = is_exported rv.(j) })
 
 (* Turn a MiniML structure into a Cerlang module:
    1. build the toplevel function map (for call resolution);
-   2. translate each declaration's body under its group binders. *)
-let translate_structure ~(modname : Cerlang.atom) struc : Cerlang.module_ =
+   2. translate each declaration's body under its group binders.
+   [exported] is the set of kernel names marked [export]; unmarked
+   functions are extracted (they may be needed by the exported ones)
+   but stay internal, i.e. absent from the module export list. *)
+let translate_structure ~(modname : Cerlang.atom) ?(exported = KerName.Set.empty) struc : Cerlang.module_ =
   let funs = ref KerName.Map.empty in
   let add r arity =
     funs := KerName.Map.add (Table.repr_of_r r) (global_name r, arity) !funs
@@ -401,7 +408,7 @@ let translate_structure ~(modname : Cerlang.atom) struc : Cerlang.module_ =
     decls;
   let ctx0 = make_ctx !funs in
   let funcs =
-    List.concat_map fundefs_of_decl decls
+    List.concat_map (fundefs_of_decl exported) decls
     |> List.map (fun fd ->
         let ctx = { ctx0 with env = fd.fd_group; counter = ref 0 } in
         let ctx, params =
@@ -413,6 +420,7 @@ let translate_structure ~(modname : Cerlang.atom) struc : Cerlang.module_ =
         in
         { Cerlang.fun_name = fd.fd_name;
           fun_params = List.rev params;
-          fun_body = trans_expr ctx fd.fd_body })
+          fun_body = trans_expr ctx fd.fd_body;
+          fun_exported = fd.fd_exported })
   in
   { Cerlang.mod_name = modname; mod_funcs = funcs }

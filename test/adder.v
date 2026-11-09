@@ -12,4 +12,4 @@ Compute add 2 3.
 CoreErlang Extraction add.
 
 (* to a file *)
-CoreErlang Extraction "test_core/adder" add.
+CoreErlang Extraction "test_core/adder" add export.

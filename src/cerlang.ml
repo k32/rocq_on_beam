@@ -48,11 +48,15 @@ and pattern =
   | PAtom of atom                     (* 'tag' *)
   | PTuple of pattern list            (* {p1,...,pn} *)
 
-(* One toplevel function definition 'name'/n = fun (params) -> body *)
+(* One toplevel function definition 'name'/n = fun (params) -> body.
+   [fun_exported] controls whether it is listed in the module exports;
+   non-exported functions are still defined (and callable from within
+   the module) but not visible from outside. *)
 type fundef = {
   fun_name : atom;
   fun_params : var list;              (* outermost-first *)
   fun_body : expr;
+  fun_exported : bool;
 }
 
 (* A whole Core Erlang module *)

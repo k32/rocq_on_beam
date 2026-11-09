@@ -17,4 +17,4 @@ Definition swap (A B : Type) (p : A * B) : B * A :=
 Definition mapfst (A B : Type) (f : A -> A) (p : A * B) : A * B :=
   match p with (a, b) => (f a, b) end.
 
-CoreErlang Extraction "test_core/poly" myfst mysnd swap mapfst.
+CoreErlang Extraction "test_core/poly" myfst export mysnd export swap export mapfst export.
