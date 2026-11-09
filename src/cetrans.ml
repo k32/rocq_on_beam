@@ -81,10 +81,6 @@ let count_lams = let rec c = function
   | _ -> 0
 in c
 
-(* Generate a fresh Core Erlang variable for a MiniML binder. The
-   Rocq identifier is sanitized (Core Erlang variables must start with
-   an uppercase letter or underscore; we always prefix with _) and
-   made unique among the variables currently in scope. *)
 (* All Core Erlang variables in a function are identified by unique
    integers from a single per-function counter; the printer turns them
    into names ([_v1], [_v2], ...). Since the counter only ever
