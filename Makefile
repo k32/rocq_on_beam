@@ -12,7 +12,7 @@
 ROCQ    ?= rocq
 ERLC    ?= erlc
 ERL     ?= erl
-PKGDIR  ?= /tmp/opencode/pkg
+PKGDIR  ?= build/pkg
 OUT     := test_core
 VFILES  := $(wildcard test/*.v)
 TESTS   := $(patsubst test/%.erl,%,$(wildcard test/*_tests.erl))
@@ -73,4 +73,4 @@ check: $(BEAMS)
 	  -eval "eunit:test([$(TESTLIST)], [verbose])" -s init stop
 
 clean:
-	rm -rf $(OUT)
+	rm -rf $(OUT) $(PKGDIR)
