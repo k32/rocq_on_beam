@@ -40,4 +40,4 @@ Fixpoint sumlist (l : list nat) : nat :=
   | cons h t => h + sumlist t
   end.
 
-CoreErlang Extraction "test_core/rich" len export partially_applied export even export odd export fact_helper export sumlist export.
+CoreErlang Extraction "test_core/rich" export(len) export(partially_applied) export(even) export(odd) export(fact_helper) export(sumlist).

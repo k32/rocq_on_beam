@@ -14,12 +14,12 @@ open Pp
 open Coreerlang
 
 let pr_export_spec (x, e) =
-  pr_qualid x ++ if e then str " export" else mt ()
+  if e then str "export(" ++ pr_qualid x ++ str ")" else pr_qualid x
 }
 
 VERNAC ARGUMENT EXTEND export_spec
   PRINTED BY { pr_export_spec }
-| [ global(x) "export" ] -> { (x, true) }
+| [ "export" "(" global(x) ")" ] -> { (x, true) }
 | [ global(x) ] -> { (x, false) }
 END
 
