@@ -85,26 +85,17 @@ in c
    Rocq identifier is sanitized (Core Erlang variables must start with
    an uppercase letter or underscore; we always prefix with _) and
    made unique among the variables currently in scope. *)
-let fresh_var ctx id =
-  let base = match id with
-    | Dummy | Tmp _ -> "_x"
-    | Id i ->
-      let s = Id.to_string i in
-      let buf = Buffer.create (String.length s + 1) in
-      Buffer.add_char buf '_';
-      String.iter
-        (fun c ->
-          if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-             || (c >= '0' && c <= '9') || c = '_' then Buffer.add_char buf c)
-        s;
-      Buffer.contents buf
-  in
-  let used = List.filter_map (function BVar v -> Some v | _ -> None) ctx.env in
-  let rec find n =
-    let v = if n = 0 then base else base ^ string_of_int n in
-    if List.mem (Cerlang.Var v) used then find (n + 1) else Cerlang.Var v
-  in
-  find 0
+(* All Core Erlang variables in a function are generated from a single
+   per-function counter: [_v1], [_v2], ... Since the counter only ever
+   increases, generated names are unique within the function and can
+   neither collide with each other nor capture each other — including
+   the eta-expansion parameters, which scope over translated arguments.
+   No name is ever derived from the Rocq identifier, so no sanitization
+   or collision checking is needed. (De Bruijn indices are still
+   resolved through the binder environment; the counter only names.) *)
+let fresh_var ctx =
+  incr ctx.counter;
+  Cerlang.Var ("_v" ^ string_of_int !(ctx.counter))
 
 (* -------------------------------------------------------------------- *)
 (* Expressions                                                          *)
@@ -148,7 +139,7 @@ let rec trans_apply ctx a =
 (* Call of a toplevel extracted function.
      [MLglob r applied to k arguments]
         -> [apply 'f'/n (a1,...,ak)]        when k >= n
-        -> [fun (_eta1..) -> apply 'f'/n (a1..ak,_eta1..)]
+        -> [fun (_vN..) -> apply 'f'/n (a1..ak,_vN..)]
                                             when k < n (partial
                                             application of a curried
                                             Rocq function; Core Erlang
@@ -165,7 +156,15 @@ and trans_global_call ctx r args =
   match KerName.Map.find_opt kn ctx.funs with
   | Some (fname, arity) when arity > List.length args ->
     let miss = arity - List.length args in
-    let extra = List.init miss (fun i -> Cerlang.Var ("_eta" ^ string_of_int i)) in
+    (* the eta parameters scope over the translated arguments, so they
+       must come from the same per-function counter (no capture) *)
+    let rec mk_extra n ctx acc =
+      if n = 0 then List.rev acc, ctx
+      else
+        let v = fresh_var ctx in
+        mk_extra (n - 1) (push_binder (BVar v) ctx) (v :: acc)
+    in
+    let extra, _ctx = mk_extra miss ctx [] in
     EFun (extra,
           EApply (EFunRef (fname, arity),
                   args @ List.map (fun v -> EVar v) extra))
@@ -185,7 +184,7 @@ and trans_fun ctx a =
   let ctx, params =
     List.fold_left
       (fun (ctx, params) id ->
-        let v = fresh_var ctx id in
+        let v = fresh_var ctx in
         (push_binder (BVar v) ctx, v :: params))
       (ctx, []) ids
   in
@@ -194,7 +193,7 @@ and trans_fun ctx a =
 (* A non-recursive binding:
      [MLletin (x, e1, e2)] -> [let _x = e1 in e2] *)
 and trans_let ctx id a1 a2 =
-  let v = fresh_var ctx id in
+  let v = fresh_var ctx in
   let ctx = push_binder (BVar v) ctx in
   Cerlang.ELet (v, trans_expr ctx a1, trans_expr ctx a2)
 
@@ -252,7 +251,7 @@ and trans_fix ctx i ids defs =
         let ctx', params =
           List.fold_left
             (fun (ctx, params) id ->
-              let v = fresh_var ctx id in
+              let v = fresh_var ctx in
               (push_binder (BVar v) ctx, v :: params))
             (ctx_group, []) idsl
         in
@@ -290,7 +289,7 @@ and trans_expr ctx a =
                let ctx, names =
                  List.fold_left
                    (fun (ctx, names) id ->
-                     let v = fresh_var ctx id in
+                     let v = fresh_var ctx in
                      (push_binder (BVar v) ctx, names @ [v]))
                    (ctx, []) ids
                in
@@ -414,7 +413,7 @@ let translate_structure ~(modname : Cerlang.atom) ?(exported = KerName.Set.empty
         let ctx, params =
           List.fold_left
             (fun (ctx, params) id ->
-              let v = fresh_var ctx id in
+              let v = fresh_var ctx in
               (push_binder (BVar v) ctx, v :: params))
             (ctx, []) fd.fd_ids
         in
