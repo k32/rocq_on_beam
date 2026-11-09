@@ -216,7 +216,7 @@ and trans_global ctx r =
      [MLcons (r, [a1;...;an])] -> {'Tag', a1,...,an}
      [MLcons (r, [])]          -> 'Tag'
    Matching code destructures the same representation (see trans_pattern). *)
-and trans_cons ctx r args =
+and trans_constructor ctx r args =
   let tag = Cerlang.Atom (Id.to_string (label_of_global r)) in
   let open Cerlang in
   match args with
@@ -308,7 +308,7 @@ and trans_expr ctx a =
   | MLlam _ -> trans_fun ctx a
   | MLletin (id, a1, a2) -> trans_let ctx id a1 a2
   | MLglob r -> trans_global ctx r
-  | MLcons (_, r, args) -> trans_cons ctx r args
+  | MLcons (_, r, args) -> trans_constructor ctx r args
   | MLtuple l -> ETuple (List.map (trans_expr ctx) l)
   | MLcase (_, t, branches) -> trans_case ctx t branches
   | MLfix (i, ids, defs) -> trans_fix ctx i ids defs
@@ -323,7 +323,7 @@ and trans_expr ctx a =
     (* arrays do not exist in Core Erlang: degraded to a tuple *)
     ETuple (Array.to_list arr |> List.map (trans_expr ctx))
 
-(* Pattern translation, mirroring trans_cons:
+(* Pattern translation, mirroring trans_constructor:
      [Pcons (r, ps)]  -> <tagged tuple pattern> / <atom pattern>
      [Pusual r]       -> constructor applied to all its (named) args
      [Ptuple ps]      -> untagged tuple pattern
