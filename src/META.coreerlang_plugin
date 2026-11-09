@@ -1,0 +1,5 @@
+version="0.1"
+description="Minimal Core Erlang extraction plugin for Rocq"
+requires="rocq-runtime.plugins.extraction"
+archive(byte)="coreerlang_plugin.cma"
+archive(native)="coreerlang_plugin.cmxs"

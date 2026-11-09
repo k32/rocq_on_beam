@@ -1,0 +1,17 @@
+{
+open Stdarg
+}
+
+DECLARE PLUGIN "coreerlang_plugin"
+
+{
+open Coreerlang
+}
+
+VERNAC COMMAND EXTEND CoreErlangExtraction CLASSIFIED AS QUERY STATE opaque_access
+(* Print the Core Erlang extraction of a global reference to stdout *)
+| [ "CoreErlang" "Extraction" global(x) ] -> { coreerlang_extraction x }
+(* Monolithic extraction of a list of references to a Core Erlang file *)
+| [ "CoreErlang" "Extraction" string(f) ne_global_list(l) ]
+  -> { coreerlang_extraction_file f l }
+END

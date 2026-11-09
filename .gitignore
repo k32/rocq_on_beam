@@ -1,0 +1,8 @@
+_build/
+test_core/
+*.core
+*.beam
+*.vo
+*.glob
+*.aux
+.lia.cache

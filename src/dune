@@ -1,0 +1,12 @@
+(library
+ (name coreerlang_plugin)
+ (synopsis "Minimal Rocq extraction plugin targeting Core Erlang")
+ (libraries rocq-runtime.plugins.extraction))
+
+(rule
+ (targets g_coreerlang.ml)
+ (deps (:mlg g_coreerlang.mlg))
+ (action (run rocq pp-mlg %{mlg})))
+
+(env
+ (_ (flags (:standard -w -27-32-39))))
