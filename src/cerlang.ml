@@ -25,7 +25,10 @@ type expr =
   | EFloat of string                  (* float literal (decimal rep) *)
   | EString of string                 (* string literal (unescaped) *)
   | EAtom of atom                     (* 'atom' *)
+  | ENil                              (* [] : the empty list *)
+  | ECons of expr * expr              (* [H|T] : list cons *)
   | ETuple of expr list               (* {e1,...,en} : untagged tuple *)
+  | EBinary of string                 (* #<...># binary of raw bytes *)
   | ECall of atom * atom * expr list
                                       (* call 'mod':'fun' (args) *)
   | EApply of expr * expr list        (* apply H (args) *)
@@ -48,6 +51,8 @@ and pattern =
   | PWild                             (* _ *)
   | PVar of var                       (* a variable *)
   | PAtom of atom                     (* 'tag' *)
+  | PNil                              (* [] *)
+  | PCons of pattern * pattern        (* [P|P] *)
   | PTuple of pattern list            (* {p1,...,pn} *)
 
 (* One toplevel function definition 'name'/n = fun (params) -> body.

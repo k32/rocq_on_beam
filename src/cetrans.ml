@@ -52,6 +52,41 @@ let marker_dummy = Cerlang.Atom "coq_dummy"
 let marker_axiom = Cerlang.Atom "coq_axiom"
 
 (* -------------------------------------------------------------------- *)
+(* Native type lowering registry                                        *)
+(*                                                                       *)
+(* Some Rocq datatypes map onto native Erlang terms: [list] onto real   *)
+(* Erlang lists, [prod] onto untagged tuples, primitive strings onto    *)
+(* binaries. The mapping is fixed (Erlang has no user-definable types), *)
+(* so we hardwire the constructor kernel names instead of reusing       *)
+(* [Extract Inductive]-style configuration.                             *)
+(* -------------------------------------------------------------------- *)
+
+let locate_global names =
+  List.fold_left
+    (fun acc q ->
+      match acc with
+      | Some _ -> acc
+      | None ->
+        (try Some (Smartlocate.global_with_alias (Libnames.qualid_of_string q))
+         with _ -> None))
+    None names
+
+(* resolved lazily: the stdlib may not be loaded when the plugin loads *)
+let kn_of names = lazy (
+  match locate_global names with
+  | Some (GlobRef.ConstructRef ((mind, _), _) as g) ->
+    ignore mind; Some (Table.repr_of_r { glob = g; inst = InfvInst.empty })
+  | _ -> None)
+
+let native_nil  = kn_of ["Corelib.Init.Datatypes.nil"; "Stdlib.Datatypes.nil";  "Coq.Datatypes.nil"]
+let native_cons = kn_of ["Corelib.Init.Datatypes.cons"; "Stdlib.Datatypes.cons"; "Coq.Datatypes.cons"]
+let native_pair = kn_of ["Corelib.Init.Datatypes.pair"; "Stdlib.Datatypes.pair"; "Coq.Datatypes.pair"]
+
+let is_native kn = function
+  | lazy (Some k) -> KerName.equal kn k
+  | lazy None -> false
+
+(* -------------------------------------------------------------------- *)
 (* Translation context                                                   *)
 (* -------------------------------------------------------------------- *)
 
@@ -209,18 +244,31 @@ and trans_global ctx r =
       Pp.(str "CoreErlang extraction: global reference to an unextracted constant: "
           ++ str (Id.to_string (Table.label_of_r r)))
 
-(* Constructor application. Inductives have no Core Erlang counterpart,
-   so a constructor with arguments becomes a tagged tuple and a nullary
-   constructor a plain atom:
+(* Constructor application. Most inductives have no Core Erlang
+   counterpart and become a tagged tuple (nullary: a plain atom):
      [MLcons (r, [a1;...;an])] -> {'Tag', a1,...,an}
      [MLcons (r, [])]          -> 'Tag'
-   Matching code destructures the same representation (see trans_pattern). *)
+   Exceptions (native lowering, see the registry above):
+     nil   -> []
+     cons  -> [H|T]
+     pair  -> {A,B}            (untagged tuple)
+   Matching code destructures the same representations (see
+   trans_pattern). *)
 and trans_constructor ctx r args =
-  let tag = Cerlang.Atom (Id.to_string (label_of_global r)) in
   let open Cerlang in
-  match args with
-  | [] -> EAtom tag
-  | l -> ETuple (EAtom tag :: List.map (trans_expr ctx) l)
+  let kn = Table.repr_of_r r in
+  if is_native kn native_nil && args = [] then ENil
+  else if is_native kn native_cons then
+    (match args with
+     | [h; t] -> ECons (trans_expr ctx h, trans_expr ctx t)
+     | _ -> ETuple (EAtom (Cerlang.Atom "coq_bad_cons")
+                    :: List.map (trans_expr ctx) args))
+  else if is_native kn native_pair then ETuple (List.map (trans_expr ctx) args)
+  else
+    let tag = Cerlang.Atom (Id.to_string (label_of_global r)) in
+    match args with
+    | [] -> EAtom tag
+    | l -> ETuple (EAtom tag :: List.map (trans_expr ctx) l)
 
 (* A local fixpoint group, denoting its i-th member:
      [MLfix (i, ids, defs)]
@@ -317,7 +365,7 @@ and trans_expr ctx a =
   | MLmagic a -> trans_expr ctx a
   | MLuint w -> EInt (Uint63.to_string w)
   | MLfloat f -> EFloat (Float64.to_string f)
-  | MLstring s -> EString (Pstring.to_string s)
+  | MLstring s -> EBinary (Pstring.to_string s)  (* native: binary *)
   | MLparray (arr, _) ->
     (* arrays do not exist in Core Erlang: degraded to a tuple *)
     ETuple (Array.to_list arr |> List.map (trans_expr ctx))
@@ -326,6 +374,8 @@ and trans_expr ctx a =
      [Pcons (r, ps)]  -> <tagged tuple pattern> / <atom pattern>
      [Pusual r]       -> constructor applied to all its (named) args
      [Ptuple ps]      -> untagged tuple pattern
+   with the same native exceptions: nil -> [], cons -> [P|P],
+   pair -> untagged tuple.
    [names] holds fresh variables for the branch idents, in ident order;
    [Prel n] denotes the n-th ident from the end (Prel 1 = last). *)
 and trans_pattern pat names =
@@ -335,20 +385,40 @@ and trans_pattern pat names =
     | Some v -> PVar v
     | None -> PWild
   in
+  let tag_of r = Cerlang.Atom (Id.to_string (label_of_global r)) in
+  let kn_of_pat r = Table.repr_of_r r in
   match pat with
   | Pwild -> PWild
   | Prel n -> prel n
   | Pcons (r, ps) ->
-    let tag = Cerlang.Atom (Id.to_string (label_of_global r)) in
-    (match ps with
-     | [] -> PAtom tag
-     | l -> PTuple (PAtom tag :: List.map (fun p -> trans_pattern p names) l))
+    let kn = kn_of_pat r in
+    if is_native kn native_nil && ps = [] then PNil
+    else if is_native kn native_cons then
+      (match ps with
+       | [p; t] -> PCons (trans_pattern p names, trans_pattern t names)
+       | _ -> PTuple (PAtom (Cerlang.Atom "coq_bad_cons")
+                      :: List.map (fun p -> trans_pattern p names) ps))
+    else if is_native kn native_pair then
+      PTuple (List.map (fun p -> trans_pattern p names) ps)
+    else
+      (match ps with
+       | [] -> PAtom (tag_of r)
+       | l -> PTuple (PAtom (tag_of r) :: List.map (fun p -> trans_pattern p names) l))
   | Ptuple ps -> PTuple (List.map (fun p -> trans_pattern p names) ps)
   | Pusual r ->
-    let tag = Cerlang.Atom (Id.to_string (label_of_global r)) in
-    (match names with
-     | [] -> PAtom tag
-     | l -> PTuple (PAtom tag :: List.map (fun v -> PVar v) l))
+    let kn = kn_of_pat r in
+    if is_native kn native_nil && names = [] then PNil
+    else if is_native kn native_cons then
+      (match names with
+       | [h; t] -> PCons (PVar h, PVar t)
+       | l -> PTuple (PAtom (Cerlang.Atom "coq_bad_cons")
+                      :: List.map (fun v -> PVar v) l))
+    else if is_native kn native_pair then PTuple (List.map (fun v -> PVar v) names)
+    else
+      let tag = tag_of r in
+      (match names with
+       | [] -> PAtom tag
+       | l -> PTuple (PAtom tag :: List.map (fun v -> PVar v) l))
 
 (* -------------------------------------------------------------------- *)
 (* Declarations and whole structures                                     *)

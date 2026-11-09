@@ -1,6 +1,7 @@
 # Plan: native type lowering for the Core Erlang extraction plugin
 
-Status: proposal (not yet implemented).
+Status: Phase 1 (1a `list`, 1b `prod`, 1c primitive `string` → binary)
+**implemented**; Phases 2–3 pending.
 
 ## Goal
 

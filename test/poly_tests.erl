@@ -5,26 +5,26 @@ nat(0) -> 'O';
 nat(N) -> {'S', nat(N - 1)}.
 
 %% type parameters are erased: the extracted functions are untyped,
-%% so they work on arbitrary 2-tuples {'pair', X, Y}.
+%% so they work on arbitrary 2-tuples {X, Y} (prod lowers to a
+%% native, untagged tuple).
 
 myfst_test() ->
-    ?assertEqual(nat(1), poly:myfst({'pair', nat(1), 'x'})).
+    ?assertEqual(nat(1), poly:myfst({nat(1), 'x'})).
 
 mysnd_test() ->
-    ?assertEqual('x', poly:mysnd({'pair', nat(1), 'x'})).
+    ?assertEqual('x', poly:mysnd({nat(1), 'x'})).
 
 swap_test() ->
-    ?assertEqual({'pair', nil, nat(1)},
-                 poly:swap({'pair', nat(1), nil})).
+    ?assertEqual({nil, nat(1)}, poly:swap({nat(1), nil})).
 
 %% even a type parameter instantiated with a function disappears:
 %% the function argument is applied dynamically
 succ(X) -> {'S', X}.
 
 mapfst_test() ->
-    ?assertEqual({'pair', nat(1), 'tag'},
-                 poly:mapfst(fun succ/1, {'pair', nat(0), 'tag'})).
+    ?assertEqual({nat(1), 'tag'},
+                 poly:mapfst(fun succ/1, {nat(0), 'tag'})).
 
 %% the same untyped myfst works on non-nat components
 untyped_test() ->
-    ?assertEqual(apple, poly:myfst({'pair', apple, banana})).
+    ?assertEqual(apple, poly:myfst({apple, banana})).

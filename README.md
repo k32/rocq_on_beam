@@ -40,15 +40,18 @@ expects.
 |------------------|----------------------------------------------------|
 | function         | `'name'/n = fun (X,Y) -> ...`                 |
 | inductive        | constructors become tagged tuples or atoms         |
-| `nat`            | `'O'` / `{'S', N}`                       |
-| `list`           | `'nil'` / `{'cons', H, T}`               |
+| `nat`            | `'O'` / `{'S', N}`                                 |
+| `list`           | native lists: `[]` / `[H\|T]`                      |
+| `prod`           | native untagged tuple `{X, Y}`                     |
+| prim. `string`   | native binary (one byte segment per character)     |
 | `match`          | `case E of <'Tag',X> when 'true' -> ... end`       |
 | record           | one-constructor inductive: `{'mkPoint', X, Y}`, projections are matches; single-function-field records eta-collapse to the function |
 | global call      | `apply 'name'/n (A, B)` (local, recursive ok) |
 | local `fix`      | `letrec 'f'/n = fun ... in ...`               |
 | partial application | eta-expansion (Core Erlang is uncurried)        |
 
-(Quoted atoms keep Rocq's original casing, e.g. `'S'`, `'Cons'`.)
+(Quoted atoms keep Rocq's original casing, e.g. `'S'`, `'Cons'`; every
+match carries a `match_fail` fallback raising `{'badmatch', ...}`.)
 
 Type parameters are erased: a definition `f (A B : Type) (p : A * B)`
 extracts to a one-argument untyped function `'f'/1 = fun (_p) -> ...`

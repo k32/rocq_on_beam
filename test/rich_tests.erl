@@ -4,13 +4,10 @@
 nat(0) -> 'O';
 nat(N) -> {'S', nat(N - 1)}.
 
-%% extracted lists: 'nil' | {'cons', H, T}
-lst([]) -> 'nil';
-lst([H | T]) -> {'cons', H, lst(T)}.
-
+%% extracted lists are native Erlang lists now
 len_test() ->
-    ?assertEqual(nat(0), rich:len('nil')),
-    ?assertEqual(nat(2), rich:len(lst([nat(1), nat(2)]))).
+    ?assertEqual(nat(0), rich:len([])),
+    ?assertEqual(nat(2), rich:len([nat(1), nat(2)])).
 
 partially_applied_test() ->
     %% double applied to 2
@@ -27,9 +24,9 @@ fact_helper_test() ->
     ?assertEqual(nat(6), rich:fact_helper(nat(3))).
 
 sumlist_test() ->
-    ?assertEqual(nat(3), rich:sumlist(lst([nat(1), nat(2)]))).
+    ?assertEqual(nat(3), rich:sumlist([nat(1), nat(2)])).
 
 %% a non-matching scrutinee hits the compiler-generated fallback clause
 %% and raises {'badmatch', Scrutinee}
 badmatch_test() ->
-    ?assertMatch({'EXIT', {{badmatch, two}, _}}, catch rich:len({cons, 1, two})).
+    ?assertMatch({'EXIT', {{badmatch, two}, _}}, catch rich:len([1 | two])).

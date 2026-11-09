@@ -45,7 +45,20 @@ let rec string_of_expr e =
   | EFloat s -> s
   | EString s -> "\"" ^ String.escaped s ^ "\""
   | EAtom a -> unatom a
+  | ENil -> "[]"
+  | ECons (h, t) -> "[" ^ string_of_expr h ^ "|" ^ string_of_expr t ^ "]"
   | ETuple l -> "{" ^ String.concat "," (List.map string_of_expr l) ^ "}"
+  | EBinary s ->
+    (* one integer segment per byte; all four segment arguments are
+       mandatory (shorter forms crash erlc's parser) *)
+    let segs =
+      String.to_seq s
+      |> Seq.map (fun c ->
+             "#<" ^ string_of_int (Char.code c)
+             ^ ">(8,1,'integer',['unsigned'|['big']])")
+      |> List.of_seq |> String.concat ","
+    in
+    "#{" ^ segs ^ "}#"
   | ECall (m, f, args) ->
     "call " ^ unatom m ^ ":" ^ unatom f ^ " ("
     ^ String.concat "," (List.map string_of_expr args) ^ ")"
@@ -79,6 +92,8 @@ and string_of_pattern p =
   | PWild -> "_"
   | PVar v -> unvar v
   | PAtom a -> unatom a
+  | PNil -> "[]"
+  | PCons (h, t) -> "[" ^ string_of_pattern h ^ "|" ^ string_of_pattern t ^ "]"
   | PTuple l -> "{" ^ String.concat "," (List.map string_of_pattern l) ^ "}"
 
 let string_of_fundef fd =
