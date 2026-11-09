@@ -18,4 +18,5 @@ map_add2_test() ->
                  curry:map_add2(lst([nat(0), nat(1), nat(2)]))).
 
 twice_curried_test() ->
-    ?assertEqual(nat(3), curry:twice_curried(nat(1))).
+    %% apply_both double succ 1 = double(1+1) = 4
+    ?assertEqual(nat(4), curry:twice_curried(nat(1))).

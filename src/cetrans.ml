@@ -72,7 +72,6 @@ type ctx = {
   counter : int ref;
 }
 
-let make_ctx funs = { env = []; funs; counter = ref 0 }
 
 let push_binder b ctx = { ctx with env = b :: ctx.env }
 
@@ -360,6 +359,7 @@ and trans_pattern pat names =
    binder environment (fixpoint group, if any), and whether it is
    exported (listed in the module exports) or internal. *)
 type fdef = {
+  fd_kn : KerName.t;             (* for the call-resolution map *)
   fd_name : atom;
   fd_ids : ml_ident list;      (* outermost-first *)
   fd_body : ml_ast;            (* body under the lambdas and the group *)
@@ -373,7 +373,8 @@ let fundefs_of_decl exported d =
   | Dind _ | Dtype _ -> []
   | Dterm (r, body, _) ->
     let ids, body' = Mlutil.collect_lams body in
-    [ { fd_name = global_name r; fd_ids = List.rev ids;
+    [ { fd_kn = Table.repr_of_r r; fd_name = global_name r;
+        fd_ids = List.rev ids;
         fd_body = body'; fd_group = []; fd_exported = is_exported r } ]
   | Dfix (rv, defs, _) ->
     let k = Array.length rv in
@@ -389,7 +390,7 @@ let fundefs_of_decl exported d =
           | MLfix (_, _, inner) -> Mlutil.collect_lams inner.(j)
           | b -> Mlutil.collect_lams b
         in
-        { fd_name = global_name rv.(j);
+        { fd_kn = Table.repr_of_r rv.(j); fd_name = global_name rv.(j);
           fd_ids = List.rev idsl;
           fd_body = body';
           fd_group = group;
@@ -412,6 +413,7 @@ let translate_structure ~(modname : Cerlang.atom) ?(exported = KerName.Set.empty
             match elem with SEdecl d -> Some d | _ -> None) elems)
       struc
   in
+  (* pass 1: initial arities (from the leading lambdas) *)
   List.iter (fun d ->
       match d with
       | Dterm (r, body, _) -> add r (count_lams body)
@@ -422,11 +424,13 @@ let translate_structure ~(modname : Cerlang.atom) ?(exported = KerName.Set.empty
               | b -> count_lams b)) rv
       | _ -> ())
     decls;
-  let ctx0 = make_ctx !funs in
+  (* pass 2: translate in dependency order (the structure is
+     topologically sorted), promoting eta-expanded bodies and keeping
+     the arity map in sync for the definitions that follow. *)
   let funcs =
     List.concat_map (fundefs_of_decl exported) decls
     |> List.map (fun fd ->
-        let ctx = { ctx0 with env = fd.fd_group; counter = ref 0 } in
+        let ctx = { env = fd.fd_group; funs = !funs; counter = ref 0 } in
         let ctx, params =
           List.fold_left
             (fun (ctx, params) id ->
@@ -434,9 +438,24 @@ let translate_structure ~(modname : Cerlang.atom) ?(exported = KerName.Set.empty
               (push_binder (BVar v) ctx, v :: params))
             (ctx, []) fd.fd_ids
         in
+        let body = trans_expr ctx fd.fd_body in
+        (* Eta promotion: a toplevel constant of function type (e.g.
+           [Definition add12 := add3 1 2]) translates to an eta-expanded
+           [EFun] wrapping a partial application. Promote its parameters
+           to the fundef's own, so the exported arity matches the
+           function's logical arity instead of a 0-arity closure box.
+           Not applied to fixpoint group members: their group binders
+           were computed from the leading lambdas. *)
+        let params, body =
+          match fd.fd_group, body with
+          | [], Cerlang.EFun (ps, b) -> params @ List.rev ps, b
+          | _ -> params, body
+        in
+        (* later declarations must see the promoted arity *)
+        funs := KerName.Map.add fd.fd_kn (fd.fd_name, List.length params) !funs;
         { Cerlang.fun_name = fd.fd_name;
           fun_params = List.rev params;
-          fun_body = trans_expr ctx fd.fd_body;
+          fun_body = body;
           fun_exported = fd.fd_exported })
   in
   { Cerlang.mod_name = modname; mod_funcs = funcs }
