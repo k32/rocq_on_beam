@@ -22,9 +22,9 @@ open Miniml
 (* -------------------------------------------------------------------- *)
 
 (* The [atom] type itself is defined in Cerlang (the AST stores atoms).
-   Atoms are built here from raw, unprefixed names: the common rocq_
-   prefix is added uniformly at printing time (see [Ceprint.unatom]),
-   so it cannot be forgotten or applied twice. *)
+   Atoms are built here from raw, unprefixed names; quoting and
+   escaping happen uniformly at printing time (see [Ceprint.unatom]),
+   so they cannot be forgotten or applied twice. *)
 type atom = Cerlang.atom
 
 (* The label of a global: for constructors we need the constructor's own
@@ -47,9 +47,9 @@ let global_name (r : global) : atom =
 
 (* Erasure markers, also atoms: kept distinctive with a coq_ prefix
    since they may collide with user constructor names otherwise *)
-let rocq_exn = Cerlang.Atom "coq_exn"
-let rocq_dummy = Cerlang.Atom "coq_dummy"
-let rocq_axiom = Cerlang.Atom "coq_axiom"
+let marker_exn = Cerlang.Atom "coq_exn"
+let marker_dummy = Cerlang.Atom "coq_dummy"
+let marker_axiom = Cerlang.Atom "coq_axiom"
 
 (* -------------------------------------------------------------------- *)
 (* Translation context                                                   *)
@@ -201,8 +201,8 @@ and trans_let ctx id a1 a2 =
      - one of our functions -> the fun reference ['f'/n]
      - otherwise             -> error. With monolithic extraction every
        dependency is part of the structure, so this should not happen;
-       since all generated atoms are rocq_-prefixed we cannot silently
-       emit a call to an external erlang function here. *)
+       there is no sensible Core Erlang to emit for a reference to an
+       unextracted constant. *)
 and trans_global ctx r =
   let kn = Table.repr_of_r r in
   match KerName.Map.find_opt kn ctx.funs with
@@ -295,9 +295,9 @@ and trans_expr ctx a =
                in
                (trans_pattern pat names, trans_expr ctx body)))
   | MLfix (i, ids, defs) -> trans_fix ctx i ids defs
-  | MLexn s -> ETuple [EAtom rocq_exn; EString s]
-  | MLdummy _ -> EAtom rocq_dummy
-  | MLaxiom s -> ETuple [EAtom rocq_axiom; EString s]
+  | MLexn s -> ETuple [EAtom marker_exn; EString s]
+  | MLdummy _ -> EAtom marker_dummy
+  | MLaxiom s -> ETuple [EAtom marker_axiom; EString s]
   | MLmagic a -> trans_expr ctx a
   | MLuint w -> EInt (Uint63.to_string w)
   | MLfloat f -> EFloat (Float64.to_string f)

@@ -9,8 +9,8 @@
    function names, constructor tags, ... The type is isomorphic to
    [string], but it makes atom-producing sites explicit; names derived
    from Rocq should be built via [Cetrans.global_name] (in the layer
-   above). The rocq_ prefix, quoting and escaping happen at printing
-   time (see [Ceprint.unatom]). *)
+   above). Quoting and escaping happen at printing time (see
+   [Ceprint.unatom]). *)
 type atom = Atom of string
 
 (* Variables: binder names in the generated code, identified by a
@@ -37,7 +37,7 @@ type expr =
                                       (* case e of <p> when 'true' -> e ... end *)
 
 and letrec_binding = {
-  lr_name : atom;                     (* function name, e.g. rocq_fix_1_0 *)
+  lr_name : atom;                     (* function name, e.g. fix_1_0 *)
   lr_params : var list;               (* lambda parameters, outermost-first *)
   lr_body : expr;
 }

@@ -80,8 +80,7 @@ let coreerlang_extraction_file ~opaque_access f l =
       ([], KerName.Set.empty) l
   in
   let struc = extract_structure ~opaque_access refs in
-  (* module name gets the common rocq_ prefix; the output file is named
-     after the module so that erlc accepts it *)
+  (* the file is named after the module so that erlc accepts it *)
   let base = Filename.remove_extension (Filename.basename f) in
   let modname = Cerlang.Atom base in
   let dir = Filename.dirname f in
