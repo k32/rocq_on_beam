@@ -65,7 +65,7 @@ Fixpoint foldT (A : Type) (f : K -> V -> A -> A) (u : list (K * V))
              (fun k0 Hin => Hsub k0 (in_cons k k0 l' Hin)))
   end.
 
-Definition fold (A : Type) (f : K -> V -> A -> A) (s : @t K V) (acc : A) : A :=
+Definition fold (A : Type) (f : K -> V -> A -> A) (acc : A) (s : @t K V) : A :=
   foldT A f (unwrap s) (keys s) acc (fun _ H => H).
 
 End HMap.

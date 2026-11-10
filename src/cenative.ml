@@ -444,16 +444,9 @@ let translate_bif_apply r (args : Cerlang.expr list) : Cerlang.expr =
       | h :: t -> h :: take (k - 1) t
     in
     let drop_eq l = match l with _ :: t -> t | [] -> [] in
-    (* this OTP's maps:fold takes (Fun, AccIn, Map); our argument order
-       is (F, Map, Acc) *)
-    let order l =
-      if mfun = "fold" then
-        match l with [f; m; a] -> [f; a; m] | _ -> l
-      else l
-    in
     if List.length args >= arity then
       Cerlang.ECall (Cerlang.Atom "maps", Cerlang.Atom mfun,
-                     order (drop_eq (take arity args)))
+                     (drop_eq (take arity args)))
     else
       let miss = arity - List.length args in
       let c = ref 0 in
@@ -461,7 +454,7 @@ let translate_bif_apply r (args : Cerlang.expr list) : Cerlang.expr =
       Cerlang.EFun
         (extra,
          Cerlang.ECall (Cerlang.Atom "maps", Cerlang.Atom mfun,
-                        order (drop_eq (args @ List.map (fun w -> Cerlang.EVar w) extra))))
+                        (drop_eq (args @ List.map (fun w -> Cerlang.EVar w) extra))))
   | Some (_, 0, None) -> Cerlang.EMap []   (* make: the empty map *)
   | Some _ -> assert false
 
