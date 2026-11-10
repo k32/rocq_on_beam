@@ -19,44 +19,42 @@ type atom = Atom of string
 type var = Var of int
 
 type expr =
-  | EVar of var                      (* a variable *)
-  | EFunRef of atom * int             (* 'f'/n : a function as a value *)
-  | EInt of string                    (* integer literal (decimal rep) *)
-  | EFloat of string                  (* float literal (decimal rep) *)
-  | EString of string                 (* string literal (unescaped) *)
-  | EAtom of atom                     (* 'atom' *)
-  | ENil                              (* [] : the empty list *)
-  | ECons of expr * expr              (* [H|T] : list cons *)
-  | ETuple of expr list               (* {e1,...,en} : untagged tuple *)
-  | EMap of (expr * expr) list        (* ~{k=>v,...}~ : map literal *)
-  | EBinary of string                 (* #<...># binary of raw bytes *)
-  | ECall of atom * atom * expr list
-                                      (* call 'mod':'fun' (args) *)
-  | EApply of expr * expr list        (* apply H (args) *)
-  | EFun of var list * expr           (* fun (x1,...,xn) -> body *)
-  | ELet of var * expr * expr         (* let x = e1 in e2 *)
-  | ELetrec of letrec_binding list * expr
-                                      (* letrec b1 ... bn in body *)
+  | EVar of var (* a variable *)
+  | EFunRef of atom * int (* 'f'/n : a function as a value *)
+  | EInt of string (* integer literal (decimal rep) *)
+  | EFloat of string (* float literal (decimal rep) *)
+  | EString of string (* string literal (unescaped) *)
+  | EAtom of atom (* 'atom' *)
+  | ENil (* [] : the empty list *)
+  | ECons of expr * expr (* [H|T] : list cons *)
+  | ETuple of expr list (* {e1,...,en} : untagged tuple *)
+  | EMap of (expr * expr) list (* ~{k=>v,...}~ : map literal *)
+  | EBinary of string (* #<...># binary of raw bytes *)
+  | ECall of atom * atom * expr list (* call 'mod':'fun' (args) *)
+  | EApply of expr * expr list (* apply H (args) *)
+  | EFun of var list * expr (* fun (x1,...,xn) -> body *)
+  | ELet of var * expr * expr (* let x = e1 in e2 *)
+  | ELetrec of letrec_binding list * expr (* letrec b1 ... bn in body *)
   | ECase of expr * (pattern * expr * expr) list
-                                      (* case e of <p> when g -> e ... end;
+    (* case e of <p> when g -> e ... end;
                                          the guard is usually 'true' *)
   | EPrimop of atom * expr list
-                                      (* primop 'name' (args) *)
+(* primop 'name' (args) *)
 
 and letrec_binding = {
-  lr_name : atom;                     (* function name, e.g. fix_1_0 *)
-  lr_params : var list;               (* lambda parameters, outermost-first *)
+  lr_name : atom; (* function name, e.g. fix_1_0 *)
+  lr_params : var list; (* lambda parameters, outermost-first *)
   lr_body : expr;
 }
 
 and pattern =
-  | PWild                             (* _ *)
-  | PVar of var                       (* a variable *)
-  | PAtom of atom                     (* 'tag' *)
-  | PNil                              (* [] *)
-  | PCons of pattern * pattern        (* [P|P] *)
-  | PInt of string                    (* integer literal, e.g. 0 *)
-  | PTuple of pattern list            (* {p1,...,pn} *)
+  | PWild (* _ *)
+  | PVar of var (* a variable *)
+  | PAtom of atom (* 'tag' *)
+  | PNil (* [] *)
+  | PCons of pattern * pattern (* [P|P] *)
+  | PInt of string (* integer literal, e.g. 0 *)
+  | PTuple of pattern list (* {p1,...,pn} *)
 
 (* One toplevel function definition 'name'/n = fun (params) -> body.
    [fun_exported] controls whether it is listed in the module exports;
@@ -64,13 +62,10 @@ and pattern =
    the module) but not visible from outside. *)
 type fundef = {
   fun_name : atom;
-  fun_params : var list;              (* outermost-first *)
+  fun_params : var list; (* outermost-first *)
   fun_body : expr;
   fun_exported : bool;
 }
 
 (* A whole Core Erlang module *)
-type module_ = {
-  mod_name : atom;
-  mod_funcs : fundef list;
-}
+type module_ = { mod_name : atom; mod_funcs : fundef list }
