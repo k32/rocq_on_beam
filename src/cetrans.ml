@@ -82,6 +82,7 @@ let check_custom r what =
    - inside [MLfix (i, ids, defs)], [MLrel n] denotes [ids.(k-n)]. *)
 type binder =
   | BVar of Cerlang.var
+  | BLam of Cerlang.var * int (* variable bound to an n-ary lambda *)
   | BFun of atom * int (* function name, arity *)
 
 type ctx = {
@@ -120,7 +121,7 @@ let fresh_var ctx =
        Erlang is a first-class value usable with [apply] *)
 let trans_var ctx n =
   match List.nth_opt ctx.env (n - 1) with
-  | Some (BVar v) -> Cerlang.EVar v
+  | Some (BVar v) | Some (BLam (v, _)) -> Cerlang.EVar v
   | Some (BFun (f, arity)) -> Cerlang.EFunRef (f, arity)
   | None -> Cerlang.EVar (Cerlang.Var 0)
 (* invalid index; 0 never minted *)
@@ -155,7 +156,27 @@ let rec trans_apply ctx a =
           r
           (List.map (trans_expr ctx) args)
       else trans_global_call ctx r args
-  | `Rel (n, args) -> EApply (trans_var ctx n, List.map (trans_expr ctx) args)
+  | `Rel (n, args) ->
+    (match List.nth_opt ctx.env (n - 1) with
+     | Some (BLam (_, k)) when k > 0 && List.length args > k ->
+       (* more arguments than the bound lambda's arity (e.g. erased
+          type arguments that extraction kept as dummies): apply the
+          first k at once, the remaining ones one at a time, as the
+          curried MiniML semantics requires *)
+       let rec split cnt l =
+         if cnt = 0 then [], l
+         else
+           match l with
+           | a :: t ->
+             let x, y = split (cnt - 1) t in
+             a :: x, y
+           | [] -> [], []
+       in
+       let first, rest = split k args in
+       List.fold_left (fun f a -> EApply (f, [ trans_expr ctx a ]))
+         (EApply (trans_var ctx n, List.map (trans_expr ctx) first))
+         rest
+     | _ -> EApply (trans_var ctx n, List.map (trans_expr ctx) args))
   | `Dyn (f, args) -> EApply (trans_expr ctx f, List.map (trans_expr ctx) args)
 
 (* Call of a toplevel extracted function.
@@ -224,7 +245,14 @@ and trans_fun ctx a =
    binder is not in scope in its own right-hand side). *)
 and trans_let ctx id a1 a2 =
   let v = fresh_var ctx in
-  let ctx' = push_binder (BVar v) ctx in
+  (* remember the arity of lambda-valued bindings (see trans_apply) *)
+  let b =
+    match a1 with
+    | (MLlam _ as lam) -> BLam (v, count_lams lam)
+    | MLmagic (MLlam _ as lam) -> BLam (v, count_lams lam)
+    | _ -> BVar v
+  in
+  let ctx' = push_binder b ctx in
   Cerlang.ELet (v, trans_expr ctx a1, trans_expr ctx' a2)
 
 (* A global in value position (not applied):
