@@ -387,84 +387,59 @@ type target =
   | NativeValue of Cerlang.expr  (* a fixed value *)
   | NotNative
 
-(* fixed HMap.make: the empty map literal *)
-let erlangbif_make = lazy (locate_global [ "ErlangBIF.HMap.make" ])
+(* -------------------------------------------------------------------- *)
+(* Per-family global classification, by plain pattern matching on the  *)
+(* global's (label, module path); no lists, no searching.               *)
+(* -------------------------------------------------------------------- *)
 
-let erlangbif_names = [
-  "ErlangBIF.HMap.make";
-  "ErlangBIF.HMap.put";
-  "ErlangBIF.HMap.find";
-  "ErlangBIF.HMap.remove";
-  "ErlangBIF.HMap.keys";
-  "ErlangBIF.HMap.fold";
-]
+let call m f arity = NativeCall (Cerlang.Atom m, Cerlang.Atom f, arity, 0)
+let call_drop m f arity = NativeCall (Cerlang.Atom m, Cerlang.Atom f, arity, 1)
 
-let native_targets = lazy (
-  List.concat_map
-    (fun (qs, m, f, arity, drop) ->
-      List.filter_map
-        (fun q ->
-          match locate_global [ q ] with
-          | Some g -> Some (g, NativeCall (Cerlang.Atom m, Cerlang.Atom f, arity, drop))
-          | None -> None)
-        qs)
-    ([ [ "Corelib.BinNums.IntDef.Z.add"; "Stdlib.ZArith.BinIntDef.Z.add";
-         "Stdlib.ZArith.BinInt.Z.add" ],
-        "erlang", "+", 2, 0;
-       [ "Corelib.BinNums.IntDef.Z.sub"; "Stdlib.ZArith.BinIntDef.Z.sub";
-         "Stdlib.ZArith.BinInt.Z.sub" ],
-        "erlang", "-", 2, 0;
-       [ "Corelib.BinNums.IntDef.Z.mul"; "Stdlib.ZArith.BinIntDef.Z.mul";
-         "Stdlib.ZArith.BinInt.Z.mul" ],
-        "erlang", "*", 2, 0;
-       [ "Corelib.BinNums.IntDef.Z.max"; "Stdlib.ZArith.BinIntDef.Z.max";
-         "Stdlib.ZArith.BinInt.Z.max" ],
-        "erlang", "max", 2, 0;
-       [ "Corelib.BinNums.IntDef.Z.min"; "Stdlib.ZArith.BinIntDef.Z.min";
-         "Stdlib.ZArith.BinInt.Z.min" ],
-        "erlang", "min", 2, 0;
-       [ "Corelib.BinNums.IntDef.Z.opp"; "Stdlib.ZArith.BinIntDef.Z.opp";
-         "Stdlib.ZArith.BinInt.Z.opp" ],
-        "erlang", "-", 2, 0 (* 0 - X *);
-       [ "Corelib.BinNums.IntDef.Z.succ"; "Stdlib.ZArith.BinIntDef.Z.succ";
-         "Stdlib.ZArith.BinInt.Z.succ" ],
-        "erlang", "+", 2, 0 (* X + 1 *);
-       [ "Corelib.BinNums.IntDef.Z.pred"; "Stdlib.ZArith.BinIntDef.Z.pred";
-         "Stdlib.ZArith.BinInt.Z.pred" ],
-        "erlang", "-", 2, 0 (* X - 1 *);
-       [ "Corelib.BinNums.IntDef.Z.abs"; "Stdlib.ZArith.BinIntDef.Z.abs";
-         "Stdlib.ZArith.BinInt.Z.abs" ],
-        "erlang", "abs", 1, 0;
-       [ "Corelib.BinNums.IntDef.Z.eqb"; "Stdlib.ZArith.BinIntDef.Z.eqb";
-         "Stdlib.ZArith.BinInt.Z.eqb" ],
-        "erlang", "=:=", 2, 0;
-       [ "Corelib.BinNums.IntDef.Z.leb"; "Stdlib.ZArith.BinIntDef.Z.leb";
-         "Stdlib.ZArith.BinInt.Z.leb" ],
-        "erlang", "=<", 2, 0;
-       [ "Corelib.BinNums.IntDef.Z.ltb"; "Stdlib.ZArith.BinIntDef.Z.ltb";
-         "Stdlib.ZArith.BinInt.Z.ltb" ],
-        "erlang", "<", 2, 0;
-       [ "Corelib.BinNums.IntDef.Z.of_nat"; "Stdlib.ZArith.BinIntDef.Z.of_nat";
-         "Stdlib.ZArith.BinInt.Z.of_nat" ],
-        "erlang", "", 1, 0; (* identity, see NativeIdentity *)
-       [ "Corelib.BinNums.IntDef.Z.to_nat"; "Stdlib.ZArith.BinIntDef.Z.to_nat";
-         "Stdlib.ZArith.BinInt.Z.to_nat" ],
-        "erlang", "", 1, 0;
-       (* ErlangBIF.HMap: the EqDec dictionary is dropped untranslated *)
-       [ "ErlangBIF.HMap.put" ], "maps", "put", 3, 1;
-       [ "ErlangBIF.HMap.find" ], "maps", "find", 2, 1;
-       [ "ErlangBIF.HMap.remove" ], "maps", "remove", 2, 1;
-       [ "ErlangBIF.HMap.keys" ], "maps", "keys", 1, 1;
-       [ "ErlangBIF.HMap.fold" ], "maps", "fold", 3, 1 ]))
+(* Z library functions -> erlang BIFs *)
+let global_to_z (r : global) : target option =
+  let l = Id.to_string (Table.label_of_r r) in
+  let m = ModPath.to_string (Table.modpath_of_r r) in
+  let z_mod =
+    match m with
+    | "Corelib.BinNums.IntDef.Z" | "Stdlib.ZArith.BinIntDef.Z"
+    | "Stdlib.ZArith.BinInt.Z" -> true
+    | _ -> false
+  in
+  match (l, z_mod) with
+  | ("add" | "sub" | "mul"), true ->
+    Some
+      (call "erlang"
+         (match l with "add" -> "+" | "sub" -> "-" | _ -> "*")
+         2)
+  | ("max" | "min"), true -> Some (call "erlang" l 2)
+  | ("opp" | "pred"), true -> Some (call "erlang" "-" 2) (* 0 - X / X - 1 *)
+  | "succ", true -> Some (call "erlang" "+" 2) (* X + 1 *)
+  | "abs", true -> Some (call "erlang" "abs" 1)
+  | "eqb", true -> Some (call "erlang" "=:=" 2)
+  | "leb", true -> Some (call "erlang" "=<" 2)
+  | "ltb", true -> Some (call "erlang" "<" 2)
+  | ("of_nat" | "to_nat"), true -> Some NativeIdentity (* both are integers *)
+  | _ -> None
 
+(* ErlangBIF.HMap methods -> maps module calls; the EqDec dictionary
+   (leading argument) is dropped untranslated *)
+let global_to_map (r : global) : target option =
+  match Id.to_string (Table.label_of_r r),
+        ModPath.to_string (Table.modpath_of_r r)
+  with
+  | "put", "ErlangBIF.HMap" -> Some (call_drop "maps" "put" 3)
+  | "find", "ErlangBIF.HMap" -> Some (call_drop "maps" "find" 2)
+  | "remove", "ErlangBIF.HMap" -> Some (call_drop "maps" "remove" 2)
+  | "keys", "ErlangBIF.HMap" -> Some (call_drop "maps" "keys" 1)
+  | "fold", "ErlangBIF.HMap" -> Some (call_drop "maps" "fold" 3)
+  | "make", "ErlangBIF.HMap" -> Some (NativeValue (Cerlang.EMap []))
+  | _ -> None
+
+(* the combined classification *)
 let global_target (r : global) : target =
-  match List.find_opt (fun (g, _) -> r.glob = g) (Lazy.force native_targets) with
-  | Some (_, NativeCall (_, f, 1, 0)) when (match f with Cerlang.Atom n -> n = "") -> NativeIdentity
-  | Some (_, t) -> t
-  | None ->
-    (match Lazy.force erlangbif_make with
-     | Some g when r.glob = g -> NativeValue (Cerlang.EMap [])
-     | _ -> NotNative)
+  match global_to_z r with
+  | Some t -> t
+  | None -> (match global_to_map r with Some t -> t | None -> NotNative)
 
 (* arity of the native call, if this global is one *)
 let call_arity r =
@@ -480,16 +455,14 @@ let render_call t args =
   | NativeIdentity, [ a ] -> a
   | _ -> assert false
 
-(* is the kernel name one of the ErlangBIF definitions (never emitted
-   as fundefs)? *)
-let is_erlangbif_kn kn =
-  let name =
-    ModPath.to_string (KerName.modpath kn) ^ "." ^ Id.to_string (KerName.label kn)
-  in
-  List.mem name erlangbif_names
-
+(* is this global one of the ErlangBIF definitions (never emitted as
+   fundefs)? -- exactly the map family above *)
 let is_erlangbif r =
-  let name =
-    ModPath.to_string (Table.modpath_of_r r) ^ "." ^ Id.to_string (Table.label_of_r r)
-  in
-  List.mem name erlangbif_names
+  match global_to_map r with Some _ -> true | None -> false
+
+let is_erlangbif_kn kn =
+  match Id.to_string (KerName.label kn),
+        ModPath.to_string (KerName.modpath kn)
+  with
+  | ("put" | "find" | "remove" | "keys" | "fold" | "make"), "ErlangBIF.HMap" -> true
+  | _ -> false
