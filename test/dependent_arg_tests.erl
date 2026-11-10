@@ -14,4 +14,4 @@ doit_test() ->
 
 %% ret_type is erased: it has no runtime existence
 ret_type_erased_test() ->
-    ?assertError({undef, _}, dependent_arg:ret_type({'Int', 3})).
+    ?assertError(undef, dependent_arg:ret_type({'Int', 3})).
