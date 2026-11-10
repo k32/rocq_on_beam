@@ -176,6 +176,16 @@ let rec trans_apply ctx a =
        List.fold_left (fun f a -> EApply (f, [ trans_expr ctx a ]))
          (EApply (trans_var ctx n, List.map (trans_expr ctx) first))
          rest
+     | Some (BLam (_, k)) when k > 1 && List.length args < k ->
+       (* fewer arguments than the bound lambda's arity: eta-expand
+          the missing parameters (a partial application must still be
+          a k-ary function, not a badarity call) *)
+       let miss = k - List.length args in
+       let extra = List.init miss (fun _ -> fresh_var ctx) in
+       EFun
+         (extra,
+          EApply (trans_var ctx n,
+                  List.map (trans_expr ctx) args @ List.map (fun w -> EVar w) extra))
      | _ -> EApply (trans_var ctx n, List.map (trans_expr ctx) args))
   | `Dyn (f, args) -> EApply (trans_expr ctx f, List.map (trans_expr ctx) args)
 
@@ -237,7 +247,19 @@ and trans_fun ctx a =
         (push_binder (BVar v) ctx, params @ [ v ]))
       (ctx, []) (List.rev ids)
   in
-  Cerlang.EFun (params, trans_expr ctx body)
+  match trans_expr ctx body with
+  | Cerlang.EFunRef (f, n) when n > 0 ->
+    (* extraction's eta-contraction can produce [fun x1..xk -> f]
+       where f is an n-ary function: the trailing parameters were
+       absorbed into f. Expand to the full uncurried arity so that
+       higher-order uses (e.g. as a maps:fold callback) see one
+       n+k-ary function *)
+    let extra = List.init n (fun _ -> fresh_var ctx) in
+    Cerlang.EFun
+      (params @ extra,
+       Cerlang.EApply (Cerlang.EFunRef (f, n),
+                       List.map (fun w -> Cerlang.EVar w) extra))
+  | body -> Cerlang.EFun (params, body)
 
 (* A non-recursive binding:
      [MLletin (x, e1, e2)] -> [let _vN = e1 in e2]
@@ -245,15 +267,40 @@ and trans_fun ctx a =
    binder is not in scope in its own right-hand side). *)
 and trans_let ctx id a1 a2 =
   let v = fresh_var ctx in
-  (* remember the arity of lambda-valued bindings (see trans_apply) *)
+  (* remember the effective arity of function-valued bindings, be they
+     lambdas, function references or partial applications (see
+     trans_apply) *)
   let b =
-    match a1 with
-    | (MLlam _ as lam) -> BLam (v, count_lams lam)
-    | MLmagic (MLlam _ as lam) -> BLam (v, count_lams lam)
+    match effective_arity ctx a1 with
+    | Some k when k > 0 -> BLam (v, k)
     | _ -> BVar v
   in
   let ctx' = push_binder b ctx in
   Cerlang.ELet (v, trans_expr ctx a1, trans_expr ctx' a2)
+
+(* the remaining (uncurried) arity of a value, if it is a function *)
+and effective_arity ctx a =
+  match a with
+  | MLmagic t -> effective_arity ctx t
+  | (MLlam _ as l) -> Some (count_lams l)
+  | MLglob r ->
+    (match KerName.Map.find_opt (Table.repr_of_r r) ctx.funs with
+     | Some (_, ar) -> Some ar
+     | None -> Cenative.call_arity r)
+  | MLapp _ ->
+    let rec spine acc = function
+      | MLapp (f, args) -> spine (args @ acc) f
+      | MLmagic f -> spine acc f
+      | h -> h, acc
+    in
+    let head, args = spine [] a in
+    let ha = effective_arity ctx head in
+    Option.map (fun h -> h - List.length args) ha
+  | MLrel n ->
+    (match List.nth_opt ctx.env (n - 1) with
+     | Some (BLam (_, k)) -> Some k
+     | _ -> None)
+  | _ -> None
 
 (* A global in value position (not applied):
      - one of our functions -> the fun reference ['f'/n]

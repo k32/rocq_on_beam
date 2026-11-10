@@ -217,8 +217,10 @@ let translate_constructor (tr : ml_ast -> Cerlang.expr) (r : global)
     | _ -> bad "Zneg"
   else if is_xH r && args = [] then EInt "1"
   else if is_hmapw r then
+    (* the Rocq representation (wrapped association list) bridges to
+       the native map representation *)
     match args with
-    | [ l ] -> ETuple [ EAtom (Atom "wrap"); tr l ]
+    | [ l ] -> Cerlang.ECall (Cerlang.Atom "maps", Cerlang.Atom "from_list", [ tr l ])
     | _ -> bad "HMapW"
   else if is_ok r then
     match args with
@@ -557,6 +559,12 @@ let is_erlangbif_kn kn =
   List.exists (fun (n, _, _) -> n = path ^ "." ^ label) erlangbif_table
 
 let is_erlangbif r = erlangbif_name r <> None
+
+(* the call arity of a native/erlangbif function, if known *)
+let call_arity r =
+  match erlangbif_name r with
+  | Some (_, a, _) -> Some a
+  | None -> Option.map op_arity (zop_of r)
 
 (* the maps call (or literal) for already-translated args, which must
    include the EqDec dictionary; partial applications eta-expand *)
