@@ -1,5 +1,6 @@
 (library
  (name coreerlang_plugin)
+ (public_name coreerlang.plugin)
  (synopsis "Minimal Rocq extraction plugin targeting Core Erlang")
  (libraries rocq-runtime.plugins.extraction zarith))
 
