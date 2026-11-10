@@ -108,14 +108,23 @@ let rec emit_expr ctx e =
      |> String.to_seq
      |> List.of_seq
      |> join ctx  "#{" ", " "}#" emit_seg
-  | ECall (m, f, args) ->
-     let _ = List.map push ["call "; unatom m; ":"; unatom f] in
-     join ctx "(" ", " ")" emit_expr args
-  | EApply (h, args) ->
-     let _ = push " apply " in
-     let _ = emit_expr ctx h in
-     join ctx "(" ", " ")" emit_expr args
-  | EFun (params, body) ->
+  | EApply (c, args) -> (
+    match c with
+    | CGlobal (m, f) ->
+      let _ = push "call " in
+      let _ = push (unatom m) in
+      let _ = push ":" in
+      let _ = push (unatom f) in
+      emit_args ctx args
+    | CExpr h ->
+      let _ = push "apply " in
+      emit_expr ctx h;
+      emit_args ctx args
+    | CPrimop p ->
+      let _ = push "primop " in
+      let _ = push (unatom p) in
+      emit_args ctx args)
+| EFun (params, body) ->
      emit_fun params body
   | ELet (v, e1, e2) ->
      let _ = List.map push [" let "; unvar v; " = "] in
@@ -140,9 +149,22 @@ let rec emit_expr ctx e =
        let _ = push " -> " in
        emit_expr ctx expr in
      join ctx "" " " " end " emit_branch branches
-  | EPrimop (p, args) ->
-     let _ = List.map push ["primop "; unatom p] in
-     join ctx "(" ", " ")" emit_expr args
+
+and emit_args ctx args =
+  let push str = Buffer.add_string ctx.buf str in
+  let _ = push "(" in
+  let rec go l =
+    match l with
+    | [] -> push ")"
+    | [ e ] ->
+      let _ = emit_expr ctx e in
+      push ")"
+    | e :: t ->
+      let _ = emit_expr ctx e in
+      let _ = push "," in
+      go t
+  in
+  go args
 
 and string_of_pattern p =
   match p with

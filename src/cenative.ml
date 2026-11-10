@@ -123,7 +123,7 @@ let is_error r = is_native r native_error
 (* -------------------------------------------------------------------- *)
 
 let erlang_call f args =
-  Cerlang.ECall (Cerlang.Atom "erlang", Cerlang.Atom f, args)
+  Cerlang.EApply (Cerlang.CGlobal (Cerlang.Atom "erlang", Cerlang.Atom f), args)
 
 let guard_true = Cerlang.EAtom (Cerlang.Atom "true")
 
@@ -220,7 +220,7 @@ let translate_constructor (tr : ml_ast -> Cerlang.expr) (r : global)
     (* the Rocq representation (wrapped association list) bridges to
        the native map representation *)
     match args with
-    | [ l ] -> Cerlang.ECall (Cerlang.Atom "maps", Cerlang.Atom "from_list", [ tr l ])
+    | [ l ] -> Cerlang.EApply (Cerlang.CGlobal (Cerlang.Atom "maps", Cerlang.Atom "from_list"), [ tr l ])
     | _ -> bad "HMapW"
   else if is_ok r then
     match args with
@@ -476,7 +476,7 @@ let call_arity r =
  * after* dropping) *)
 let render_call t args =
   match (t, args) with
-  | NativeCall (m, f, _, _), a -> Cerlang.ECall (m, f, a)
+  | NativeCall (m, f, _, _), a -> Cerlang.EApply (Cerlang.CGlobal (m, f), a)
   | NativeIdentity, [ a ] -> a
   | _ -> assert false
 

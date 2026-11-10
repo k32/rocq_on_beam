@@ -30,16 +30,21 @@ type expr =
   | ETuple of expr list (* {e1,...,en} : untagged tuple *)
   | EMap of (expr * expr) list (* ~{k=>v,...}~ : map literal *)
   | EBinary of string (* #<...># binary of raw bytes *)
-  | ECall of atom * atom * expr list (* call 'mod':'fun' (args) *)
-  | EApply of expr * expr list (* apply H (args) *)
+  | EApply of callee * expr list
+    (* call 'mod':'fun' (args) / apply H (args) / primop 'p' (args) *)
   | EFun of var list * expr (* fun (x1,...,xn) -> body *)
   | ELet of var * expr * expr (* let x = e1 in e2 *)
   | ELetrec of letrec_binding list * expr (* letrec b1 ... bn in body *)
   | ECase of expr * (pattern * expr * expr) list
     (* case e of <p> when g -> e ... end;
        the guard is usually 'true' *)
-  | EPrimop of atom * expr list
-(* primop 'name' (args) *)
+
+(* what is being applied: a (remote) global function, an expression
+   (variable, fun reference, ...), or a primop *)
+and callee =
+  | CGlobal of atom * atom (* 'mod':'fun' *)
+  | CExpr of expr (* any apply-able expression *)
+  | CPrimop of atom (* primop 'name' *)
 
 and letrec_binding = {
   lr_name : atom; (* function name, e.g. fix_1_0 *)

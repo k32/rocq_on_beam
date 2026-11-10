@@ -190,7 +190,7 @@ and apply_callee ctx what render k ml_drop args =
        rest applied to the result one at a time *)
     eta_info (what ^ " applied to more arguments than its arity");
     List.fold_left
-      (fun f a -> Cerlang.EApply (f, [ trans_expr ctx a ]))
+      (fun f a -> Cerlang.EApply (Cerlang.CExpr f, [ trans_expr ctx a ]))
       (render (trans_args ctx ml_drop (take k args)))
       (drop_list k args)
   end
@@ -240,23 +240,24 @@ and trans_apply ctx a =
       render_remote ctx r t (List.map (trans_expr ctx) args)
     | Some (Local_fun (fname, arity), what, ml_drop) ->
       apply_callee ctx what
-        (fun a -> EApply (EFunRef (fname, arity), a))
+        (fun a -> EApply (CExpr (EFunRef (fname, arity)), a))
         arity ml_drop args
     | Some (Local_var _, _, _) -> assert false
     | None ->
       (* unknown global: a plain remote call *)
-      ECall
-        ( Cerlang.Atom (ModPath.to_string (Table.modpath_of_r r)),
-          global_name r,
+      EApply
+        ( CGlobal
+            (Cerlang.Atom (ModPath.to_string (Table.modpath_of_r r)),
+             global_name r),
           List.map (trans_expr ctx) args ))
   | `Rel (n, args) -> (
     match List.nth_opt ctx.env (n - 1) with
     | Some (BLam (v, k)) when k > 0 ->
       apply_callee ctx "a local function"
-        (fun a -> EApply (EVar v, a))
+        (fun a -> EApply (CExpr (EVar v), a))
         k 0 args
-    | _ -> EApply (trans_var ctx n, List.map (trans_expr ctx) args))
-  | `Dyn (f, args) -> EApply (trans_expr ctx f, List.map (trans_expr ctx) args)
+    | _ -> EApply (CExpr (trans_var ctx n), List.map (trans_expr ctx) args))
+  | `Dyn (f, args) -> EApply (CExpr (trans_expr ctx f), List.map (trans_expr ctx) args)
 
 (* a global in value position (not applied) *)
 and trans_global ctx r =
@@ -271,7 +272,7 @@ and trans_global ctx r =
     Cerlang.EFun ([ v ], Cerlang.EVar v)
   | Some (Local_fun (fname, 0), _, _) ->
     (* an arity-0 definition denotes its value, not a function *)
-    Cerlang.EApply (Cerlang.EFunRef (fname, 0), [])
+    Cerlang.EApply (Cerlang.CExpr (Cerlang.EFunRef (fname, 0)), [])
   | Some (Local_fun (fname, arity), what, _) ->
     eta_info (what ^ " used as a value (fun reference)");
     Cerlang.EFunRef (fname, arity)
@@ -317,7 +318,7 @@ and trans_fun ctx a =
     let extra = List.init n (fun _ -> fresh_var ctx) in
     Cerlang.EFun
       (params @ extra,
-       Cerlang.EApply (Cerlang.EFunRef (f, n),
+       Cerlang.EApply (Cerlang.CExpr (Cerlang.EFunRef (f, n)),
                        List.map (fun w -> Cerlang.EVar w) extra))
   | body -> Cerlang.EFun (params, body)
 
@@ -441,8 +442,8 @@ and trans_case ctx t branches =
   let fallback =
     ( Cerlang.PVar v,
       guard_true,
-      Cerlang.EPrimop
-        ( Cerlang.Atom "match_fail",
+      Cerlang.EApply
+        ( Cerlang.CPrimop (Cerlang.Atom "match_fail"),
           [
             Cerlang.ETuple
               [ Cerlang.EAtom (Cerlang.Atom "badmatch"); Cerlang.EVar v ];
