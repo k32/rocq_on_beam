@@ -568,8 +568,8 @@ let call_arity r =
 
 (* the maps call (or literal) for already-translated args, which must
    include the EqDec dictionary; partial applications eta-expand *)
-let translate_bif_apply ~(fresh : unit -> Cerlang.var) r
-    (args : Cerlang.expr list) : Cerlang.expr =
+let translate_bif_apply ~(fresh : unit -> Cerlang.var) ~(note : string -> unit)
+    r (args : Cerlang.expr list) : Cerlang.expr =
   match erlangbif_name r with
   | None -> assert false
   | Some (_, arity, Some mfun) ->
@@ -582,7 +582,8 @@ let translate_bif_apply ~(fresh : unit -> Cerlang.var) r
       if List.length args >= arity then
         Cerlang.ECall
           (Cerlang.Atom "maps", Cerlang.Atom mfun, drop_eq (take arity args))
-      else
+      else (
+        note "partial application of an ErlangBIF function";
         let miss = arity - List.length args in
         let extra = List.init miss (fun _ -> fresh ()) in
         Cerlang.EFun
@@ -590,12 +591,14 @@ let translate_bif_apply ~(fresh : unit -> Cerlang.var) r
             Cerlang.ECall
               ( Cerlang.Atom "maps",
                 Cerlang.Atom mfun,
-                drop_eq (args @ List.map (fun w -> Cerlang.EVar w) extra) ) )
+                drop_eq (args @ List.map (fun w -> Cerlang.EVar w) extra) ) ) )
   | Some (_, 0, None) -> Cerlang.EMap [] (* make: the empty map *)
   | Some _ -> assert false
 
 (* a builtin used as a value *)
-let translate_bif_value ~(fresh : unit -> Cerlang.var) r : Cerlang.expr =
+let translate_bif_value ~(fresh : unit -> Cerlang.var) ~(note : string -> unit)
+    r : Cerlang.expr =
+  note "ErlangBIF function used as a value (closure synthesized)";
   match erlangbif_name r with
   | None -> assert false
   | Some (_, _, None) -> Cerlang.EMap []
@@ -625,8 +628,8 @@ let is_native_call (r : global) = zop_of r <> None
 (* [translate_apply ~fresh r args] handles an application of a Z
    library function to already-translated [args], eta-expanding when
    the application is partial (Core Erlang calls are uncurried). *)
-let translate_apply ~(fresh : unit -> Cerlang.var) (r : global)
-    (args : Cerlang.expr list) : Cerlang.expr =
+let translate_apply ~(fresh : unit -> Cerlang.var) ~(note : string -> unit)
+    (r : global) (args : Cerlang.expr list) : Cerlang.expr =
   let op = match zop_of r with Some o -> o | None -> assert false in
   let n = op_arity op in
   let rec take k = function
@@ -635,15 +638,18 @@ let translate_apply ~(fresh : unit -> Cerlang.var) (r : global)
     | h :: t -> h :: take (k - 1) t
   in
   if List.length args >= n then op_apply ~fresh op (take n args)
-  else
+  else (
+    note "partial application of a library function";
     let miss = n - List.length args in
     let extra = List.init miss (fun _ -> fresh ()) in
     Cerlang.EFun
       ( extra,
-        op_apply ~fresh op (args @ List.map (fun w -> Cerlang.EVar w) extra) )
+        op_apply ~fresh op (args @ List.map (fun w -> Cerlang.EVar w) extra) ) )
 
 (* a Z library function used as a value: synthesize its closure *)
-let translate_value ~(fresh : unit -> Cerlang.var) (r : global) : Cerlang.expr =
+let translate_value ~(fresh : unit -> Cerlang.var) ~(note : string -> unit)
+    (r : global) : Cerlang.expr =
+  note "library function used as a value (closure synthesized)";
   let op = match zop_of r with Some o -> o | None -> assert false in
   let n = op_arity op in
   let vars = List.init n (fun _ -> fresh ()) in

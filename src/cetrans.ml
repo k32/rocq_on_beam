@@ -109,6 +109,19 @@ let fresh_var ctx =
   incr ctx.counter;
   Cerlang.Var !(ctx.counter)
 
+(* the fundef being translated, for diagnostics *)
+let current_function = ref ""
+
+(* eta-conversions are correct but inefficient (extra closures) and a
+   recurring source of arity mismatches; tell the user, so they can
+   refactor towards direct n-ary definitions *)
+let eta_info what =
+  Feedback.msg_info
+    Pp. (str "CoreErlang extraction: eta-conversion (" ++ str what ++ str ")"
+     ++ str " while translating '" ++ str !current_function ++ str "'"
+     ++ str "; this is correct but inefficient and error-prone,"
+     ++ str " consider refactoring to a direct application")
+
 (* -------------------------------------------------------------------- *)
 (* Expressions                                                          *)
 (* -------------------------------------------------------------------- *)
@@ -147,13 +160,15 @@ let rec trans_apply ctx a =
   | `Glob (r, args) ->
       if Cenative.is_erlangbif r then
         (* ErlangBIF library function: lowered to an injected builtin *)
-        Cenative.translate_bif_apply ~fresh:(fun () -> fresh_var ctx) r
-        (List.map (trans_expr ctx) args)
+        Cenative.translate_bif_apply ~fresh:(fun () -> fresh_var ctx)
+          ~note:eta_info r
+          (List.map (trans_expr ctx) args)
       else if Cenative.is_native_call r then
         (* Z library function: Cenative rewrites it wholesale into an
          Erlang BIF call (eta-expanding if partially applied) *)
         Cenative.translate_apply
           ~fresh:(fun () -> fresh_var ctx)
+          ~note:eta_info
           r
           (List.map (trans_expr ctx) args)
       else trans_global_call ctx r args
@@ -174,6 +189,7 @@ let rec trans_apply ctx a =
            | [] -> [], []
        in
        let first, rest = split k args in
+       eta_info "variable applied to more arguments than its arity";
        List.fold_left (fun f a -> EApply (f, [ trans_expr ctx a ]))
          (EApply (trans_var ctx n, List.map (trans_expr ctx) first))
          rest
@@ -182,6 +198,7 @@ let rec trans_apply ctx a =
           the missing parameters (a partial application must still be
           a k-ary function, not a badarity call) *)
        let miss = k - List.length args in
+       eta_info "partial application of a local function";
        let extra = List.init miss (fun _ -> fresh_var ctx) in
        EFun
          (extra,
@@ -209,6 +226,7 @@ and trans_global_call ctx r args =
   let open Cerlang in
   match KerName.Map.find_opt kn ctx.funs with
   | Some (fname, arity) when arity > List.length args ->
+      eta_info "partial application of an extracted function";
       let miss = arity - List.length args in
       (* the eta parameters scope over the translated arguments, so they
        must come from the same per-function counter (no capture) *)
@@ -224,9 +242,10 @@ and trans_global_call ctx r args =
           EApply
             (EFunRef (fname, arity), args @ List.map (fun v -> EVar v) extra) )
   | Some (fname, arity) ->
-    if List.length args > arity then
+    if List.length args > arity then begin
       (* curried overshoot (e.g. an eta-collapsed callee): apply the
          function's own arguments at once, the rest one at a time *)
+      eta_info "function applied to more arguments than its extracted arity";
       let rec split cnt l =
         if cnt = 0 then [], l
         else
@@ -240,6 +259,7 @@ and trans_global_call ctx r args =
       List.fold_left (fun f a -> EApply (f, [ a ]))
         (EApply (EFunRef (fname, arity), first))
         rest
+    end
     else EApply (EFunRef (fname, arity), args)
   | None ->
       ECall
@@ -271,6 +291,8 @@ and trans_fun ctx a =
        absorbed into f. Expand to the full uncurried arity so that
        higher-order uses (e.g. as a maps:fold callback) see one
        n+k-ary function *)
+    eta_info
+      ("lambda reduced to a bare function reference by extraction's        eta-contraction, re-expanded");
     let extra = List.init n (fun _ -> fresh_var ctx) in
     Cerlang.EFun
       (params @ extra,
@@ -333,11 +355,11 @@ and trans_global ctx r =
       Cerlang.EApply (Cerlang.EFunRef (fname, 0), [])
   | Some (fname, arity) -> Cerlang.EFunRef (fname, arity)
   | None ->
-      if Cenative.is_erlangbif r then Cenative.translate_bif_value ~fresh:(fun () -> fresh_var ctx) r
+      if Cenative.is_erlangbif r then Cenative.translate_bif_value ~fresh:(fun () -> fresh_var ctx) ~note:eta_info r
       else if Cenative.is_native_call r then
         (* a Z library function used as a value: Cenative synthesizes
           its closure *)
-        Cenative.translate_value ~fresh:(fun () -> fresh_var ctx) r
+        Cenative.translate_value ~fresh:(fun () -> fresh_var ctx) ~note:eta_info r
       else
         CErrors.user_err
           Pp.(
@@ -641,6 +663,7 @@ let translate_structure ~(modname : Cerlang.atom)
     List.concat_map (fundefs_of_decl exported) decls
     |> List.filter (fun fd -> not (Cenative.is_erlangbif_kn fd.fd_kn))
     |> List.map (fun fd ->
+        (match fd.fd_name with Cerlang.Atom n -> current_function := n);
         let ctx = { env = fd.fd_group; funs = !funs; counter = ref 0 } in
         let ctx, params =
           List.fold_left
