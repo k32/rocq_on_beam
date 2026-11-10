@@ -1,3 +1,5 @@
+open Names
+module Table = Extraction_plugin.Table
 (*-----------------------------------------------------------------------*)
 (*  Native type lowering.                                                 *)
 (*                                                                       *)
@@ -54,6 +56,13 @@ let native_Zneg = gr_of ["Corelib.Numbers.BinNums.Zneg"]
 let native_xH   = gr_of ["Corelib.Numbers.BinNums.xH"]
 let native_xO   = gr_of ["Corelib.Numbers.BinNums.xO"]
 let native_xI   = gr_of ["Corelib.Numbers.BinNums.xI"]
+(* the HMap wrapper from our Erlang support library (present only when
+   the theories are loaded): discerns a map from a regular list *)
+let native_hmapw = gr_of ["ErlangBIF.HMap.wrap"]
+(* MapFindResult from ErlangTypes: isomorphic to native maps:find's
+   {ok, Value} | error *)
+let native_ok    = gr_of ["ErlangTypes.Ok"]
+let native_error = gr_of ["ErlangTypes.Error"]
 
 let is_native (r : global) = function
   | lazy (Some g) -> r.glob = g
@@ -70,6 +79,9 @@ let is_Zneg r = is_native r native_Zneg
 let is_xH   r = is_native r native_xH
 let is_xO   r = is_native r native_xO
 let is_xI   r = is_native r native_xI
+let is_hmapw r = is_native r native_hmapw
+let is_ok r = is_native r native_ok
+let is_error r = is_native r native_error
 
 (* -------------------------------------------------------------------- *)
 (* Helpers shared by the lowering rules                                  *)
@@ -119,7 +131,8 @@ let z_literal = function
 
 let is_native_constructor (r : global) =
   is_nil r || is_cons r || is_pair r || is_O r || is_S r || is_Z0 r
-  || is_Zpos r || is_Zneg r || is_xH r || is_xO r || is_xI r
+  || is_Zpos r || is_Zneg r || is_xH r || is_xO r || is_xI r || is_hmapw r
+  || is_ok r || is_error r
 
 (* Constructor translation for a natively lowered constructor
    (total when [is_native_constructor r] holds); [tr] translates
@@ -131,7 +144,9 @@ let is_native_constructor (r : global) =
      O     -> 0                (nat literals fold to one integer)
      S x   -> call 'erlang':'+'(x, 1)
      Z0    -> 0;  Zpos p -> p;  Zneg p -> 0 - p
-     xH    -> 1;  xO p -> 2*p;  xI p -> 2*p + 1 *)
+     xH    -> 1;  xO p -> 2*p;  xI p -> 2*p + 1
+     HMap.Wrap l -> {'HMapW', l}   (the map wrapper: discerns a map
+                                    from the regular native list inside) *)
 let translate_constructor (tr : ml_ast -> Cerlang.expr) (r : global) (args : ml_ast list) :
   Cerlang.expr =
   let open Cerlang in
@@ -167,6 +182,15 @@ let translate_constructor (tr : ml_ast -> Cerlang.expr) (r : global) (args : ml_
         | _ -> (erlang_call "-" [EInt "0"; tr t]))
      | _ -> (bad "Zneg"))
   else if is_xH r && args = [] then (EInt "1")
+  else if is_hmapw r then
+    (match args with
+     | [l] -> ETuple [EAtom (Atom "wrap"); tr l]
+     | _ -> bad "HMapW")
+  else if is_ok r then
+    (match args with
+     | [v] -> ETuple [EAtom (Atom "ok"); tr v]
+     | _ -> bad "ok")
+  else if is_error r && args = [] then EAtom (Atom "error")
   else if is_xO r || is_xI r then
     (match args with
      | [t] ->
@@ -186,6 +210,7 @@ let translate_constructor (tr : ml_ast -> Cerlang.expr) (r : global) (args : ml_
    instead, and deep ones have no native pattern at all. *)
 let is_native_pattern (r : global) =
   is_nil r || is_cons r || is_pair r || is_O r || is_Z0 r || is_xH r
+  || is_ok r || is_error r
 
 (* [translate_pattern sub r ps] (total when [is_native_pattern r]);
    [sub] translates the sub-patterns. *)
@@ -200,11 +225,17 @@ let translate_pattern (sub : ml_pattern -> Cerlang.pattern)
   else if is_pair r then PTuple (List.map sub ps)
   else if (is_O r || is_Z0 r) && ps = [] then PInt "0"
   else if is_xH r && ps = [] then PInt "1"
+  else if is_ok r then
+    (match ps with
+     | [p] -> PTuple [PAtom (Atom "ok"); sub p]
+     | _ -> PTuple [PAtom (Atom "ok")])
+  else if is_error r && ps = [] then PAtom (Atom "error")
   else assert false
 
 (* Pusual: constructor applied to all its (named) arguments *)
 let is_native_usual (r : global) =
   is_nil r || is_cons r || is_pair r || is_O r || is_Z0 r || is_xH r
+  || is_ok r || is_error r
 
 let translate_pattern_usual (r : global) (names : Cerlang.var list) :
   Cerlang.pattern =
@@ -217,6 +248,8 @@ let translate_pattern_usual (r : global) (names : Cerlang.var list) :
   else if is_pair r then PTuple (List.map (fun v -> PVar v) names)
   else if is_O r || is_Z0 r then PInt "0"
   else if is_xH r then PInt "1"
+  else if is_ok r then PTuple (PAtom (Atom "ok") :: List.map (fun w -> PVar w) names)
+  else if is_error r && names = [] then PAtom (Atom "error")
   else assert false
 
 (* -------------------------------------------------------------------- *)
@@ -305,6 +338,7 @@ type zop =
   | Const2 of string * int  (* 'erlang':'f'(A, c) *)
   | Compare              (* 3-way case, returns 'Eq' | 'Lt' | 'Gt' *)
   | Identity             (* fun X -> X *)
+  | EqDec                (* decidable equality: 'left' | 'right' *)
 
 let z_entries = [
   ["Corelib.BinNums.IntDef.Z.add"; "Stdlib.ZArith.BinIntDef.Z.add"; "Stdlib.ZArith.BinInt.Z.add"], Bin "+";
@@ -321,6 +355,7 @@ let z_entries = [
   ["Corelib.BinNums.IntDef.Z.ltb"; "Stdlib.ZArith.BinIntDef.Z.ltb"; "Stdlib.ZArith.BinInt.Z.ltb"], Bin "<";
   ["Corelib.BinNums.IntDef.Z.compare"; "Stdlib.ZArith.BinIntDef.Z.compare"; "Stdlib.ZArith.BinInt.Z.compare"], Compare;
   ["Corelib.BinNums.IntDef.Z.of_nat"; "Stdlib.ZArith.BinIntDef.Z.of_nat"; "Stdlib.ZArith.BinInt.Z.of_nat"], Identity;
+  ["Stdlib.Arith.PeanoNat.Nat.eq_dec"; "Corelib.Arith.PeanoNat.Nat.eq_dec"], EqDec;
   ["Corelib.BinNums.IntDef.Z.to_nat"; "Stdlib.ZArith.BinIntDef.Z.to_nat"; "Stdlib.ZArith.BinInt.Z.to_nat"], Identity;
 ]
 
@@ -351,11 +386,100 @@ let op_apply ~(fresh : unit -> Cerlang.var) op (args : Cerlang.expr list) : Cerl
     ECase (a, [ (PVar x, erlang_call "=:=" [EVar x; b], EAtom (Atom "Eq"));
                 (PVar x, erlang_call "<" [EVar x; b], EAtom (Atom "Lt"));
                 (PVar x, guard_true, EAtom (Atom "Gt")) ])
+  | EqDec, [a; b] ->
+    let x = fresh () in
+    ECase (a, [ (PVar x, erlang_call "=:=" [EVar x; b], EAtom (Atom "left"));
+                (PVar x, guard_true, EAtom (Atom "right")) ])
   | _ -> assert false
 
 (* the operator's arity *)
 let op_arity = function
   | Bin _ -> 2 | Un _ -> 1 | Const2 _ -> 1 | Compare -> 2 | Identity -> 1
+  | EqDec -> 2
+
+(* -------------------------------------------------------------------- *)
+(* ErlangBIF: the support library is for Rocq code only.                 *)
+(*                                                                       *)
+(* Its HMap implementation (Storage over association lists, the wrap    *)
+(* wrapper) is never lowered as is: the runtime representation is a     *)
+(* native Erlang map, and every method is rewritten to the isomorphic   *)
+(* maps module call -- matching on the type and method name only.       *)
+(* The EqDec dictionary that extraction keeps as a leading argument is  *)
+(* dropped (native maps compare keys themselves).                        *)
+(* -------------------------------------------------------------------- *)
+
+(* extracted arity (EqDec dictionary first, absent for make) and the
+   maps module function it becomes; make is the empty map literal *)
+let erlangbif_table = [
+  "ErlangBIF.HMap.make",   0, None;
+  "ErlangBIF.HMap.put",    4, Some "put";
+  "ErlangBIF.HMap.find",   3, Some "find";
+  "ErlangBIF.HMap.remove", 3, Some "remove";
+  "ErlangBIF.HMap.keys",   2, Some "keys";
+  "ErlangBIF.HMap.fold",   4, Some "fold";
+]
+
+let erlangbif_name (r : global) =
+  let path = ModPath.to_string (Table.modpath_of_r r) in
+  let label = Id.to_string (Table.label_of_r r) in
+  List.find_opt (fun (n, _, _) -> n = path ^ "." ^ label) erlangbif_table
+
+(* by kernel name, for skipping declarations *)
+let is_erlangbif_kn kn =
+  let path = ModPath.to_string (KerName.modpath kn) in
+  let label = Id.to_string (KerName.label kn) in
+  List.exists (fun (n, _, _) -> n = path ^ "." ^ label) erlangbif_table
+
+let is_erlangbif r = erlangbif_name r <> None
+
+(* the maps call (or literal) for already-translated args, which must
+   include the EqDec dictionary; partial applications eta-expand *)
+let translate_bif_apply r (args : Cerlang.expr list) : Cerlang.expr =
+  match erlangbif_name r with
+  | None -> assert false
+  | Some (_, arity, Some mfun) ->
+    let rec take k = function
+      | [] -> []
+      | _ :: _ when k = 0 -> []
+      | h :: t -> h :: take (k - 1) t
+    in
+    let drop_eq l = match l with _ :: t -> t | [] -> [] in
+    (* this OTP's maps:fold takes (Fun, AccIn, Map); our argument order
+       is (F, Map, Acc) *)
+    let order l =
+      if mfun = "fold" then
+        match l with [f; m; a] -> [f; a; m] | _ -> l
+      else l
+    in
+    if List.length args >= arity then
+      Cerlang.ECall (Cerlang.Atom "maps", Cerlang.Atom mfun,
+                     order (drop_eq (take arity args)))
+    else
+      let miss = arity - List.length args in
+      let c = ref 0 in
+      let extra = List.init miss (fun _ -> incr c; Cerlang.Var !c) in
+      Cerlang.EFun
+        (extra,
+         Cerlang.ECall (Cerlang.Atom "maps", Cerlang.Atom mfun,
+                        order (drop_eq (args @ List.map (fun w -> Cerlang.EVar w) extra))))
+  | Some (_, 0, None) -> Cerlang.EMap []   (* make: the empty map *)
+  | Some _ -> assert false
+
+(* a builtin used as a value *)
+let translate_bif_value r : Cerlang.expr =
+  match erlangbif_name r with
+  | None -> assert false
+  | Some (_, _, None) -> Cerlang.EMap []
+  | Some (_, arity, Some mfun) ->
+    let vars = List.init arity (fun i -> Cerlang.Var (i + 1)) in
+    let args = List.tl (List.map (fun w -> Cerlang.EVar w) vars) in
+    let args =
+      if mfun = "fold" then
+        match args with [f; m; a] -> [f; a; m] | _ -> args
+      else args
+    in
+    Cerlang.EFun (vars,
+                  Cerlang.ECall (Cerlang.Atom "maps", Cerlang.Atom mfun, args))
 
 (* -------------------------------------------------------------------- *)
 (* Query interface used by [cetrans]                                     *)

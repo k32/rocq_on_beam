@@ -28,6 +28,7 @@ type expr =
   | ENil                              (* [] : the empty list *)
   | ECons of expr * expr              (* [H|T] : list cons *)
   | ETuple of expr list               (* {e1,...,en} : untagged tuple *)
+  | EMap of (expr * expr) list        (* ~{k=>v,...}~ : map literal *)
   | EBinary of string                 (* #<...># binary of raw bytes *)
   | ECall of atom * atom * expr list
                                       (* call 'mod':'fun' (args) *)

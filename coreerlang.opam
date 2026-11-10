@@ -1,0 +1,20 @@
+opam-version: "2.0"
+name: "coreerlang"
+version: "0.1"
+synopsis: "Minimal Rocq extraction plugin targeting Core Erlang"
+maintainer: "noreply@example.com"
+authors: "noreply@example.com"
+license: "GPL3"
+homepage: "https://example.invalid"
+bug-reports: "https://example.invalid"
+dev-repo: "git+https://example.invalid/coreerlang.git"
+build: [
+  [ "dune" "build" "-p" name "-j" jobs ]
+]
+depends: [
+  "ocaml"
+  "dune" {>= "3.0"}
+  "rocq-core" {(>= "9.0")}
+  "zarith"
+  "coq-libtx-storage"
+]

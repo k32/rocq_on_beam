@@ -16,8 +16,9 @@
 translate(File) ->
     Target = core_target(File),
     ok = filelib:ensure_dir(Target),          % don't assume dirs exist
-    run(rocq, ["c", "-I", pkg_dir(), "-R", filename:dirname(File), "",
-               File]),
+    Args = ["c", "-I", pkg_dir(), "-R", filename:dirname(File), ""]
+        ++ theories_args(),
+    run(rocq, Args ++ [File]),
     Core = Target ++ ".core",
     case filelib:is_regular(Core) of
         true -> Core;
@@ -53,6 +54,14 @@ root() ->
 
 pkg_dir() ->
     filename:join(root(), "build/pkg").
+
+%% the support library (theories/Erlang.v), if present
+theories_args() ->
+    Dir = filename:join(root(), "theories"),
+    case filelib:is_dir(Dir) of
+        true -> ["-R", Dir, ""];
+        false -> []
+    end.
 
 base(File) ->
     filename:rootname(filename:basename(File)).

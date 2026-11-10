@@ -90,7 +90,9 @@ let coreerlang_extraction_file ~opaque_access f l =
     (if dir = "." then "" else dir ^ "/")
     ^ Ceprint.escape_atom base ^ ".core"
   in
+  (* translate first: on error, no (truncated) output file is left *)
+  let contents = translate ~modname ~exported struc in
   let oc = open_out file in
-  output_string oc (translate ~modname ~exported struc);
+  output_string oc contents;
   close_out oc;
   Feedback.msg_info Pp.(str ("Core Erlang extraction written to " ^ file))

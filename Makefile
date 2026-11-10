@@ -36,6 +36,7 @@ all: check
 
 PKG   := $(PKGDIR)/coreerlang_plugin
 STAMP := $(PKG)/.staged
+LIB    := $(patsubst %.v,%.vo,$(wildcard theories/*.v))
 
 $(PKG):
 	mkdir -p $@
@@ -50,13 +51,22 @@ $(STAMP): src/*.ml src/*.mlg src/META.coreerlang_plugin | $(PKG)
 
 build: $(STAMP)
 
+# --- support library (Erlang.v and friends) ---------------------------
+
+theories/%.vo: theories/%.v $(STAMP)
+	$(ROCQ) c -q -R theories "" $<
+
+theories/Erlang.vo: theories/ErlangTypes.vo theories/ErlangBIF.vo
+
+lib: $(LIB)
+
 # --- Rocq -> Core Erlang (abstract rule over test/*.v) ----------------
 
 $(OUT):
 	mkdir -p $@
 
 $(OUT)/%.core: test/%.v $(STAMP) | $(OUT)
-	$(ROCQ) c -I $(PKGDIR) -R test "" $<
+	$(ROCQ) c -I $(PKGDIR) -R theories "" -R test "" $<
 
 # --- Core Erlang / EUnit suites -> BEAM (abstract rules) --------------
 
@@ -68,7 +78,7 @@ $(OUT)/%_tests.beam: test/%_tests.erl | $(OUT)
 
 # --- run the test suite ------------------------------------------------
 
-check: $(BEAMS)
+check: lib $(BEAMS)
 	$(ERL) -pa $(OUT) -noshell \
 	  -eval "eunit:test([$(TESTLIST)], [verbose])" -s init stop
 

@@ -48,6 +48,10 @@ let rec string_of_expr e =
   | ENil -> "[]"
   | ECons (h, t) -> "[" ^ string_of_expr h ^ "|" ^ string_of_expr t ^ "]"
   | ETuple l -> "{" ^ String.concat "," (List.map string_of_expr l) ^ "}"
+  | EMap assocs ->
+    "~{" ^ String.concat ","
+      (List.map (fun (k, v) -> string_of_expr k ^ "=>" ^ string_of_expr v) assocs)
+    ^ "}~"
   | EBinary s ->
     (* one integer segment per byte; all four segment arguments are
        mandatory (shorter forms crash erlc's parser) *)

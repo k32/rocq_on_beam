@@ -140,7 +140,10 @@ let rec trans_apply ctx a =
   let open Cerlang in
   match spine [] a with
   | `Glob (r, args) ->
-    if Cenative.is_native_call r then
+    if Cenative.is_erlangbif r then
+      (* ErlangBIF library function: lowered to an injected builtin *)
+      Cenative.translate_bif_apply r (List.map (trans_expr ctx) args)
+    else if Cenative.is_native_call r then
       (* Z library function: Cenative rewrites it wholesale into an
          Erlang BIF call (eta-expanding if partially applied) *)
       Cenative.translate_apply ~fresh:(fun () -> fresh_var ctx) r
@@ -195,13 +198,16 @@ and trans_global_call ctx r args =
    The nested lambdas are collected with [Mlutil.collect_lams] (which
    returns the identifiers innermost-first) and bound to fresh names. *)
 and trans_fun ctx a =
+  (* [collect_lams] returns identifiers innermost-first; push them
+     outermost-first so that the binder environment has the innermost
+     binder at its head, as MiniML's 1-based indices require *)
   let ids, body = Mlutil.collect_lams a in
   let ctx, params =
     List.fold_left
       (fun (ctx, params) id ->
         let v = fresh_var ctx in
-        (push_binder (BVar v) ctx, v :: params))
-      (ctx, []) ids
+        (push_binder (BVar v) ctx, params @ [v]))
+      (ctx, []) (List.rev ids)
   in
   Cerlang.EFun (params, trans_expr ctx body)
 
@@ -223,9 +229,14 @@ and trans_let ctx id a1 a2 =
 and trans_global ctx r =
   let kn = Table.repr_of_r r in
   match KerName.Map.find_opt kn ctx.funs with
+  | Some (fname, 0) ->
+    (* an arity-0 definition denotes its value, not a function: call it *)
+    Cerlang.EApply (Cerlang.EFunRef (fname, 0), [])
   | Some (fname, arity) -> Cerlang.EFunRef (fname, arity)
   | None ->
-    (if Cenative.is_native_call r then
+    (if Cenative.is_erlangbif r then
+       Cenative.translate_bif_value r
+     else if Cenative.is_native_call r then
        (* a Z library function used as a value: Cenative synthesizes
           its closure *)
        Cenative.translate_value ~fresh:(fun () -> fresh_var ctx) r
@@ -474,20 +485,27 @@ let translate_structure ~(modname : Cerlang.atom) ?(exported = KerName.Set.empty
   in
   (* pass 1: initial arities (from the leading lambdas) *)
   List.iter (fun d ->
-      match d with
-      | Dterm (r, body, _) -> add r (count_lams body)
-      | Dfix (rv, defs, _) ->
-        Array.iteri (fun j r ->
-            add r (match defs.(j) with
-              | MLfix (_, _, inner) -> count_lams inner.(j)
-              | b -> count_lams b)) rv
-      | _ -> ())
+      let skip = match d with
+        | Dterm (r, _, _) -> Cenative.is_erlangbif r
+        | Dfix (rv, _, _) -> Array.exists Cenative.is_erlangbif rv
+        | _ -> false
+      in
+      if not skip then
+        match d with
+        | Dterm (r, body, _) -> add r (count_lams body)
+        | Dfix (rv, defs, _) ->
+          Array.iteri (fun j r ->
+              add r (match defs.(j) with
+                | MLfix (_, _, inner) -> count_lams inner.(j)
+                | b -> count_lams b)) rv
+        | _ -> ())
     decls;
   (* pass 2: translate in dependency order (the structure is
      topologically sorted), promoting eta-expanded bodies and keeping
      the arity map in sync for the definitions that follow. *)
   let funcs =
     List.concat_map (fundefs_of_decl exported) decls
+    |> List.filter (fun fd -> not (Cenative.is_erlangbif_kn fd.fd_kn))
     |> List.map (fun fd ->
         let ctx = { env = fd.fd_group; funs = !funs; counter = ref 0 } in
         let ctx, params =
