@@ -1,4 +1,4 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 From Stdlib Require Import ZArith.
 Open Scope Z_scope.
@@ -28,4 +28,4 @@ Compute doit (Int 3).
 Compute doit (Int (-123456789012345678901234567890)).
 Compute doit (Bool true).
 
-CoreErlang Extraction "test_core/dependent_arg" doit.
+CoreErlang Extraction "dependent_arg" doit.

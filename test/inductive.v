@@ -1,4 +1,4 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 (* A plain inductive with several constructors of different arities.
    Each constructor becomes a tagged tuple (or atom when nullary):
@@ -43,4 +43,4 @@ with count_green (g : green) : nat :=
   | GNode r _ => count_red r
   end.
 
-CoreErlang Extraction "test_core/inductive" sum_tree mirror count_red count_green.
+CoreErlang Extraction "inductive" sum_tree mirror count_red count_green.

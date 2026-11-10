@@ -1,7 +1,5 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
-(* tail-recursive: the accumulator is the first argument, recursion on
-   the second (and the recursive call is in tail position) *)
 Fixpoint add (n m : nat) {struct m} : nat :=
   match m with
   | O => n
@@ -14,4 +12,4 @@ Compute add 2 3.
 CoreErlang Extraction add.
 
 (* to a file *)
-CoreErlang Extraction "test_core/adder" add.
+CoreErlang Extraction "adder" add.

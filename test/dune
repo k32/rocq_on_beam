@@ -1,0 +1,9 @@
+(rocq.theory
+ (name coreerlang_test)
+ (theories Stdlib Erlang)
+ (plugins rocq-runtime.plugins.extraction rocq-core-erlang)
+ (modules :standard))
+
+(rule
+ (alias runtest)
+ (action (run ./tests.exe)))

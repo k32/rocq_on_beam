@@ -92,7 +92,7 @@ let native_xI = gr_of [ "Corelib.Numbers.BinNums.xI" ]
 
 (* the HMap wrapper from our Erlang support library (present only when
    the theories are loaded): discerns a map from a regular list *)
-let native_hmapw = gr_of [ "ErlangBIF.HMap.wrap" ]
+let native_hmapw = gr_of [ "Erlang.BIF.HMap.wrap" ]
 
 (* MapFindResult from ErlangTypes: isomorphic to native maps:find's
    {ok, Value} | error *)
@@ -421,18 +421,18 @@ let global_to_z (r : global) : target option =
   | ("of_nat" | "to_nat"), true -> Some NativeIdentity (* both are integers *)
   | _ -> None
 
-(* ErlangBIF.HMap methods -> maps module calls; the EqDec dictionary
+(* Erlang.BIF.HMap methods -> maps module calls; the EqDec dictionary
    (leading argument) is dropped untranslated *)
 let global_to_map (r : global) : target option =
   match Id.to_string (Table.label_of_r r),
         ModPath.to_string (Table.modpath_of_r r)
   with
-  | "put", "ErlangBIF.HMap" -> Some (call_drop "maps" "put" 3)
-  | "find", "ErlangBIF.HMap" -> Some (call_drop "maps" "find" 2)
-  | "remove", "ErlangBIF.HMap" -> Some (call_drop "maps" "remove" 2)
-  | "keys", "ErlangBIF.HMap" -> Some (call_drop "maps" "keys" 1)
-  | "fold", "ErlangBIF.HMap" -> Some (call_drop "maps" "fold" 3)
-  | "make", "ErlangBIF.HMap" -> Some (NativeValue (Cerlang.EMap []))
+  | "put", "Erlang.BIF.HMap" -> Some (call_drop "maps" "put" 3)
+  | "find", "Erlang.BIF.HMap" -> Some (call_drop "maps" "find" 2)
+  | "remove", "Erlang.BIF.HMap" -> Some (call_drop "maps" "remove" 2)
+  | "keys", "Erlang.BIF.HMap" -> Some (call_drop "maps" "keys" 1)
+  | "fold", "Erlang.BIF.HMap" -> Some (call_drop "maps" "fold" 3)
+  | "make", "Erlang.BIF.HMap" -> Some (NativeValue (Cerlang.EMap []))
   | _ -> None
 
 (* the combined classification *)
@@ -455,7 +455,7 @@ let render_call t args =
   | NativeIdentity, [ a ] -> a
   | _ -> assert false
 
-(* is this global one of the ErlangBIF definitions (never emitted as
+(* is this global one of the Erlang.BIF definitions (never emitted as
    fundefs)? -- exactly the map family above *)
 let is_erlangbif r =
   match global_to_map r with Some _ -> true | None -> false
@@ -464,5 +464,5 @@ let is_erlangbif_kn kn =
   match Id.to_string (KerName.label kn),
         ModPath.to_string (KerName.modpath kn)
   with
-  | ("put" | "find" | "remove" | "keys" | "fold" | "make"), "ErlangBIF.HMap" -> true
+  | ("put" | "find" | "remove" | "keys" | "fold" | "make"), "Erlang.BIF.HMap" -> true
   | _ -> false

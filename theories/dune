@@ -1,7 +1,6 @@
 (rocq.theory
  (name Erlang)
- (package coreerlang)
- (synopsis "Extraction of Rocq into Erlang")
+ (package rocq-core-erlang)
+ (synopsis "Definitions isomorphic to the Erlang runtime functions")
  (theories Stdlib LibTx.Storage)
- (plugins rocq-runtime.plugins.extraction coreerlang.plugin)
  (modules :standard))

@@ -1,4 +1,4 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 (* A Rocq Record is an inductive with one constructor; extraction turns
    the projections into functions that match on the constructor. *)
@@ -27,4 +27,4 @@ Definition apply_wrapped (w : wrapper nat nat) (n : nat) : nat :=
 Definition adder_wrapper : wrapper nat nat :=
   mkWrapper nat nat (fun n => n + n).
 
-CoreErlang Extraction "test_core/record" origin sum_coords translate apply_wrapped adder_wrapper Nat.add.
+CoreErlang Extraction "record" origin sum_coords translate apply_wrapped adder_wrapper Nat.add.

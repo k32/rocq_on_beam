@@ -10,7 +10,7 @@ inlining, opacity handling, …) carries over.
 ## Usage
 
 ```coq
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 (* print to stdout *)
 CoreErlang Extraction add.
@@ -70,7 +70,7 @@ make clean   # remove test_core/
 ```
 
 The Makefile rules are abstract: a new test `test/foo.v` (containing
-`CoreErlang Extraction "test_core/foo" ...`) plus `test/foo_tests.erl`
+`CoreErlang Extraction "foo" ...`) plus `test/foo_tests.erl`
 is picked up automatically.
 
 Manual usage (equivalent steps):

@@ -1,4 +1,4 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 Require Import List.
 
@@ -40,4 +40,4 @@ Fixpoint sumlist (l : list nat) : nat :=
   | cons h t => h + sumlist t
   end.
 
-CoreErlang Extraction "test_core/rich" len partially_applied even odd fact_helper sumlist noexport(double).
+CoreErlang Extraction "rich" len partially_applied even odd fact_helper sumlist noexport(double).
