@@ -56,6 +56,8 @@ build: $(STAMP)
 theories/%.vo: theories/%.v $(STAMP)
 	$(ROCQ) c -q -R theories "" $<
 
+theories/ErlangBIF.vo: theories/ErlangTypes.vo
+
 theories/Erlang.vo: theories/ErlangTypes.vo theories/ErlangBIF.vo
 
 lib: $(LIB)
