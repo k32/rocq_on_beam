@@ -37,7 +37,7 @@ type expr =
   | ELetrec of letrec_binding list * expr (* letrec b1 ... bn in body *)
   | ECase of expr * (pattern * expr * expr) list
     (* case e of <p> when g -> e ... end;
-                                         the guard is usually 'true' *)
+       the guard is usually 'true' *)
   | EPrimop of atom * expr list
 (* primop 'name' (args) *)
 
