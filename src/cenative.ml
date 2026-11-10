@@ -568,7 +568,8 @@ let call_arity r =
 
 (* the maps call (or literal) for already-translated args, which must
    include the EqDec dictionary; partial applications eta-expand *)
-let translate_bif_apply r (args : Cerlang.expr list) : Cerlang.expr =
+let translate_bif_apply ~(fresh : unit -> Cerlang.var) r
+    (args : Cerlang.expr list) : Cerlang.expr =
   match erlangbif_name r with
   | None -> assert false
   | Some (_, arity, Some mfun) ->
@@ -583,12 +584,7 @@ let translate_bif_apply r (args : Cerlang.expr list) : Cerlang.expr =
           (Cerlang.Atom "maps", Cerlang.Atom mfun, drop_eq (take arity args))
       else
         let miss = arity - List.length args in
-        let c = ref 0 in
-        let extra =
-          List.init miss (fun _ ->
-              incr c;
-              Cerlang.Var !c)
-        in
+        let extra = List.init miss (fun _ -> fresh ()) in
         Cerlang.EFun
           ( extra,
             Cerlang.ECall
@@ -599,12 +595,12 @@ let translate_bif_apply r (args : Cerlang.expr list) : Cerlang.expr =
   | Some _ -> assert false
 
 (* a builtin used as a value *)
-let translate_bif_value r : Cerlang.expr =
+let translate_bif_value ~(fresh : unit -> Cerlang.var) r : Cerlang.expr =
   match erlangbif_name r with
   | None -> assert false
   | Some (_, _, None) -> Cerlang.EMap []
   | Some (_, arity, Some mfun) ->
-      let vars = List.init arity (fun i -> Cerlang.Var (i + 1)) in
+      let vars = List.init arity (fun _ -> fresh ()) in
       let args = List.tl (List.map (fun w -> Cerlang.EVar w) vars) in
       let args =
         if mfun = "fold" then

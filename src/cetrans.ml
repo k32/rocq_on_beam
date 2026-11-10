@@ -147,7 +147,8 @@ let rec trans_apply ctx a =
   | `Glob (r, args) ->
       if Cenative.is_erlangbif r then
         (* ErlangBIF library function: lowered to an injected builtin *)
-        Cenative.translate_bif_apply r (List.map (trans_expr ctx) args)
+        Cenative.translate_bif_apply ~fresh:(fun () -> fresh_var ctx) r
+        (List.map (trans_expr ctx) args)
       else if Cenative.is_native_call r then
         (* Z library function: Cenative rewrites it wholesale into an
          Erlang BIF call (eta-expanding if partially applied) *)
@@ -223,7 +224,23 @@ and trans_global_call ctx r args =
           EApply
             (EFunRef (fname, arity), args @ List.map (fun v -> EVar v) extra) )
   | Some (fname, arity) ->
-      EApply (EFunRef (fname, max arity (List.length args)), args)
+    if List.length args > arity then
+      (* curried overshoot (e.g. an eta-collapsed callee): apply the
+         function's own arguments at once, the rest one at a time *)
+      let rec split cnt l =
+        if cnt = 0 then [], l
+        else
+          match l with
+          | a :: t ->
+            let x, y = split (cnt - 1) t in
+            a :: x, y
+          | [] -> [], []
+      in
+      let first, rest = split arity args in
+      List.fold_left (fun f a -> EApply (f, [ a ]))
+        (EApply (EFunRef (fname, arity), first))
+        rest
+    else EApply (EFunRef (fname, arity), args)
   | None ->
       ECall
         ( Cerlang.Atom (ModPath.to_string (Table.modpath_of_r r)),
@@ -316,7 +333,7 @@ and trans_global ctx r =
       Cerlang.EApply (Cerlang.EFunRef (fname, 0), [])
   | Some (fname, arity) -> Cerlang.EFunRef (fname, arity)
   | None ->
-      if Cenative.is_erlangbif r then Cenative.translate_bif_value r
+      if Cenative.is_erlangbif r then Cenative.translate_bif_value ~fresh:(fun () -> fresh_var ctx) r
       else if Cenative.is_native_call r then
         (* a Z library function used as a value: Cenative synthesizes
           its closure *)
