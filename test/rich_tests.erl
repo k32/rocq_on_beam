@@ -29,4 +29,4 @@ sumlist_test() ->
 %% a non-matching scrutinee hits the compiler-generated fallback clause
 %% and raises {'badmatch', Scrutinee}
 badmatch_test() ->
-    ?assertMatch({'EXIT', {{badmatch, two}, _}}, catch rich:len([1 | two])).
+    ?assertError({badmatch, two}, rich:len([1 | two])).
