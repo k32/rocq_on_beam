@@ -7,7 +7,7 @@
 
 From Stdlib Require Import List Classes.EquivDec.
 From LibTx Require Import Storage.Classes Storage.Instances.List.
-Require Import ErlangTypes.
+Require Import ErlangTypes EqDecNat.
 Import ListNotations.
 
 Module HMap.

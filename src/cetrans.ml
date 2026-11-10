@@ -139,15 +139,88 @@ let trans_var ctx n =
   | None -> Cerlang.EVar (Cerlang.Var 0)
 (* invalid index; 0 never minted *)
 
-(* Application [MLapp (f, [a1;...;an])]. We first flatten the whole
-   application spine (f is itself often an MLapp), then dispatch on the
-   head:
-     - toplevel global   -> local call  [apply 'f'/n (args)]
-                            (eta-expanded if partial, since Core Erlang
-                            calls are n-ary, not curried)
-     - de Bruijn var     -> [apply H (args)]
-     - anything else     -> [apply H (args)] after translating the head *)
-let rec trans_apply ctx a =
+(* -------------------------------------------------------------------- *)
+(* The single application engine.                                        *)
+(*                                                                       *)
+(* MiniML is curried, Core Erlang is not; every callee is described by  *)
+(* its uncurried arity (and, for native calls, how many leading ML      *)
+(* arguments to drop untranslated), and this one place decides between  *)
+(* a direct call, eta-expansion (too few arguments) and a curried       *)
+(* split (too many arguments).                                           *)
+(* -------------------------------------------------------------------- *)
+
+type callee =
+  | Local_fun of Cerlang.atom * int  (* one of our fundefs *)
+  | Local_var of int * int           (* variable, effective arity *)
+  | Remote of Cenative.target        (* native (or plain remote) call *)
+
+(* translate [drop] arguments away and the rest *)
+let rec trans_args ctx drop args =
+  if drop = 0 then List.map (trans_expr ctx) args
+  else
+    match args with
+    | _ :: t -> trans_args ctx (drop - 1) t
+    | [] -> []
+
+and take k l =
+  if k = 0 then [] else match l with x :: t -> x :: take (k - 1) t | [] -> []
+
+and drop_list k l =
+  if k = 0 then l else match l with _ :: t -> drop_list (k - 1) t | [] -> []
+
+(* apply a callee (of known arity [k], ML arguments [args], [ml_drop]
+   leading ML arguments dropped untranslated) *)
+and apply_callee ctx what render k ml_drop args =
+  (* the callee consumes k + ml_drop ML arguments (ml_drop of which are
+     dropped untranslated) *)
+  let k = k + ml_drop in
+  let n = List.length args in
+  if n = k then render (trans_args ctx ml_drop args)
+  else if n < k then begin
+    (* eta-expansion: a partial application must still be a k-ary fun *)
+    eta_info ("partial application of " ^ what);
+    let miss = k - n in
+    let extra = List.init miss (fun _ -> fresh_var ctx) in
+    Cerlang.EFun
+      (extra,
+       render (trans_args ctx ml_drop args @ List.map (fun w -> Cerlang.EVar w) extra))
+  end
+  else begin
+    (* curried overshoot: the callee's own k arguments at once, the
+       rest applied to the result one at a time *)
+    eta_info (what ^ " applied to more arguments than its arity");
+    List.fold_left
+      (fun f a -> Cerlang.EApply (f, [ trans_expr ctx a ]))
+      (render (trans_args ctx ml_drop (take k args)))
+      (drop_list k args)
+  end
+
+(* the callee description of a global, if any *)
+and global_callee ctx r =
+  match Cenative.global_target r with
+  | Cenative.NativeCall _ as t -> Some (Remote t, "a native function", 0)
+  | Cenative.NativeIdentity -> Some (Remote Cenative.NativeIdentity, "the identity", 0)
+  | Cenative.NativeValue v ->
+    Some (Remote (Cenative.NativeValue v), "a native value", 0)
+  | Cenative.NotNative -> (
+    match KerName.Map.find_opt (Table.repr_of_r r) ctx.funs with
+    | Some (fname, arity) -> Some (Local_fun (fname, arity), "an extracted function", 0)
+    | None -> None)
+
+and render_remote ctx r t args =
+  match t with
+  | Cenative.NativeCall _ | Cenative.NativeIdentity -> Cenative.render_call t args
+  | Cenative.NativeValue v ->
+    (* a fixed value; only a nullary application makes sense *)
+    if args = [] then v
+    else
+      CErrors.user_err
+        Pp.(str "CoreErlang extraction: a fixed native value applied to arguments")
+  | _ -> assert false
+
+(* Application [MLapp (f, [a1;...;an])]: flatten the spine, then
+   dispatch on the head *)
+and trans_apply ctx a =
   let rec spine acc = function
     | MLapp (f, args) -> spine (args @ acc) f
     | MLmagic f -> spine acc f (* unsafe cast: erased, look through *)
@@ -157,115 +230,63 @@ let rec trans_apply ctx a =
   in
   let open Cerlang in
   match spine [] a with
-  | `Glob (r, args) ->
-      if Cenative.is_erlangbif r then
-        (* ErlangBIF library function: lowered to an injected builtin *)
-        Cenative.translate_bif_apply ~fresh:(fun () -> fresh_var ctx)
-          ~note:eta_info r
-          (List.map (trans_expr ctx) args)
-      else if Cenative.is_native_call r then
-        (* Z library function: Cenative rewrites it wholesale into an
-         Erlang BIF call (eta-expanding if partially applied) *)
-        Cenative.translate_apply
-          ~fresh:(fun () -> fresh_var ctx)
-          ~note:eta_info
-          r
-          (List.map (trans_expr ctx) args)
-      else trans_global_call ctx r args
-  | `Rel (n, args) ->
-    (match List.nth_opt ctx.env (n - 1) with
-     | Some (BLam (_, k)) when k > 0 && List.length args > k ->
-       (* more arguments than the bound lambda's arity (e.g. erased
-          type arguments that extraction kept as dummies): apply the
-          first k at once, the remaining ones one at a time, as the
-          curried MiniML semantics requires *)
-       let rec split cnt l =
-         if cnt = 0 then [], l
-         else
-           match l with
-           | a :: t ->
-             let x, y = split (cnt - 1) t in
-             a :: x, y
-           | [] -> [], []
-       in
-       let first, rest = split k args in
-       eta_info "variable applied to more arguments than its arity";
-       List.fold_left (fun f a -> EApply (f, [ trans_expr ctx a ]))
-         (EApply (trans_var ctx n, List.map (trans_expr ctx) first))
-         rest
-     | Some (BLam (_, k)) when k > 1 && List.length args < k ->
-       (* fewer arguments than the bound lambda's arity: eta-expand
-          the missing parameters (a partial application must still be
-          a k-ary function, not a badarity call) *)
-       let miss = k - List.length args in
-       eta_info "partial application of a local function";
-       let extra = List.init miss (fun _ -> fresh_var ctx) in
-       EFun
-         (extra,
-          EApply (trans_var ctx n,
-                  List.map (trans_expr ctx) args @ List.map (fun w -> EVar w) extra))
-     | _ -> EApply (trans_var ctx n, List.map (trans_expr ctx) args))
-  | `Dyn (f, args) -> EApply (trans_expr ctx f, List.map (trans_expr ctx) args)
-
-(* Call of a toplevel extracted function.
-     [MLglob r applied to k arguments]
-        -> [apply 'f'/n (a1,...,ak)]        when k >= n
-        -> [fun (_vN..) -> apply 'f'/n (a1..ak,_vN..)]
-                                            when k < n (partial
-                                            application of a curried
-                                            Rocq function; Core Erlang
-                                            functions are uncurried, so
-                                            we eta-expand the missing
-                                            arguments)
-   If the global is not one of the functions we are emitting (it should
-   not happen with monolithic extraction, but be defensive), we emit a
-   remote call [call 'module':'name' (args)]. *)
-and trans_global_call ctx r args =
-  let kn = Table.repr_of_r r in
-  let args = List.map (trans_expr ctx) args in
-  let open Cerlang in
-  match KerName.Map.find_opt kn ctx.funs with
-  | Some (fname, arity) when arity > List.length args ->
-      eta_info "partial application of an extracted function";
-      let miss = arity - List.length args in
-      (* the eta parameters scope over the translated arguments, so they
-       must come from the same per-function counter (no capture) *)
-      let rec mk_extra n ctx acc =
-        if n = 0 then (List.rev acc, ctx)
-        else
-          let v = fresh_var ctx in
-          mk_extra (n - 1) (push_binder (BVar v) ctx) (v :: acc)
-      in
-      let extra, _ctx = mk_extra miss ctx [] in
-      EFun
-        ( extra,
-          EApply
-            (EFunRef (fname, arity), args @ List.map (fun v -> EVar v) extra) )
-  | Some (fname, arity) ->
-    if List.length args > arity then begin
-      (* curried overshoot (e.g. an eta-collapsed callee): apply the
-         function's own arguments at once, the rest one at a time *)
-      eta_info "function applied to more arguments than its extracted arity";
-      let rec split cnt l =
-        if cnt = 0 then [], l
-        else
-          match l with
-          | a :: t ->
-            let x, y = split (cnt - 1) t in
-            a :: x, y
-          | [] -> [], []
-      in
-      let first, rest = split arity args in
-      List.fold_left (fun f a -> EApply (f, [ a ]))
-        (EApply (EFunRef (fname, arity), first))
-        rest
-    end
-    else EApply (EFunRef (fname, arity), args)
-  | None ->
+  | `Glob (r, args) -> (
+    match global_callee ctx r with
+    | Some (Remote ((Cenative.NativeCall (_, _, k, ml_drop) as t)), what, _) ->
+      apply_callee ctx what (render_remote ctx r t) k ml_drop args
+    | Some (Remote Cenative.NativeIdentity, _, _) ->
+      Cenative.render_call Cenative.NativeIdentity (List.map (trans_expr ctx) args)
+    | Some (Remote ((Cenative.NativeValue _ | Cenative.NotNative) as t), _, _) ->
+      render_remote ctx r t (List.map (trans_expr ctx) args)
+    | Some (Local_fun (fname, arity), what, ml_drop) ->
+      apply_callee ctx what
+        (fun a -> EApply (EFunRef (fname, arity), a))
+        arity ml_drop args
+    | Some (Local_var _, _, _) -> assert false
+    | None ->
+      (* unknown global: a plain remote call *)
       ECall
         ( Cerlang.Atom (ModPath.to_string (Table.modpath_of_r r)),
           global_name r,
-          args )
+          List.map (trans_expr ctx) args ))
+  | `Rel (n, args) -> (
+    match List.nth_opt ctx.env (n - 1) with
+    | Some (BLam (v, k)) when k > 0 ->
+      apply_callee ctx "a local function"
+        (fun a -> EApply (EVar v, a))
+        k 0 args
+    | _ -> EApply (trans_var ctx n, List.map (trans_expr ctx) args))
+  | `Dyn (f, args) -> EApply (trans_expr ctx f, List.map (trans_expr ctx) args)
+
+(* a global in value position (not applied) *)
+and trans_global ctx r =
+  match global_callee ctx r with
+  | Some (Remote (Cenative.NativeValue v), _, _) -> v
+  | Some (Remote ((Cenative.NativeCall (_, _, arity, _) as t)), what, _) ->
+    eta_info (what ^ " used as a value (closure synthesized)");
+    let vars = List.init arity (fun _ -> fresh_var ctx) in
+    Cerlang.EFun (vars, render_remote ctx r t (List.map (fun w -> Cerlang.EVar w) vars))
+  | Some (Remote Cenative.NativeIdentity, _, _) ->
+    let v = fresh_var ctx in
+    Cerlang.EFun ([ v ], Cerlang.EVar v)
+  | Some (Local_fun (fname, 0), _, _) ->
+    (* an arity-0 definition denotes its value, not a function *)
+    Cerlang.EApply (Cerlang.EFunRef (fname, 0), [])
+  | Some (Local_fun (fname, arity), what, _) ->
+    eta_info (what ^ " used as a value (fun reference)");
+    Cerlang.EFunRef (fname, arity)
+  | Some (Local_var _, _, _) -> assert false
+  | Some (Remote Cenative.NotNative, _, _) -> assert false
+  | None -> (
+    (* not one of ours and not native: extraction should have pulled
+       every dependency in, so this is an error *)
+    match Cenative.call_arity r with
+    | Some _ -> assert false (* impossible: it would be a NativeCall *)
+    | None ->
+      CErrors.user_err
+        Pp.(str "CoreErlang extraction: global reference to an unextracted constant: "
+          ++ str (ModPath.to_string (Table.modpath_of_r r))
+          ++ str "." ++ str (Id.to_string (Table.label_of_r r))))
 
 (* A (possibly n-ary) MiniML lambda becomes an uncurried Core Erlang fun:
      [MLlam (x1,...MLlam (xn, body)...)]
@@ -322,10 +343,14 @@ and effective_arity ctx a =
   match a with
   | MLmagic t -> effective_arity ctx t
   | (MLlam _ as l) -> Some (count_lams l)
-  | MLglob r ->
-    (match KerName.Map.find_opt (Table.repr_of_r r) ctx.funs with
-     | Some (_, ar) -> Some ar
-     | None -> Cenative.call_arity r)
+  | MLglob r -> (
+    match Cenative.global_target r with
+    | Cenative.NativeCall (_, _, a, drop) -> Some (a + drop)
+    | Cenative.NativeIdentity -> Some 1
+    | _ -> (
+      match KerName.Map.find_opt (Table.repr_of_r r) ctx.funs with
+      | Some (_, ar) -> Some ar
+      | None -> None))
   | MLapp _ ->
     let rec spine acc = function
       | MLapp (f, args) -> spine (args @ acc) f
@@ -347,41 +372,6 @@ and effective_arity ctx a =
        dependency is part of the structure, so this should not happen;
        there is no sensible Core Erlang to emit for a reference to an
        unextracted constant. *)
-and trans_global ctx r =
-  let kn = Table.repr_of_r r in
-  match KerName.Map.find_opt kn ctx.funs with
-  | Some (fname, 0) ->
-      (* an arity-0 definition denotes its value, not a function: call it *)
-      Cerlang.EApply (Cerlang.EFunRef (fname, 0), [])
-  | Some (fname, arity) -> Cerlang.EFunRef (fname, arity)
-  | None ->
-      if Cenative.is_erlangbif r then Cenative.translate_bif_value ~fresh:(fun () -> fresh_var ctx) ~note:eta_info r
-      else if Cenative.is_native_call r then
-        (* a Z library function used as a value: Cenative synthesizes
-          its closure *)
-        Cenative.translate_value ~fresh:(fun () -> fresh_var ctx) ~note:eta_info r
-      else
-        CErrors.user_err
-          Pp.(
-            str
-              "CoreErlang extraction: global reference to an unextracted \
-               constant: "
-            ++ str (ModPath.to_string (Table.modpath_of_r r))
-            ++ str "."
-            ++ str (Id.to_string (Table.label_of_r r)))
-
-(* Constructor application. Most inductives have no Core Erlang
-   counterpart and become a tagged tuple (nullary: a plain atom):
-     [MLcons (r, [a1;...;an])] -> {'Tag', a1,...,an}
-     [MLcons (r, [])]          -> 'Tag'
-   Exceptions (native lowering, see the registry above):
-     nil   -> []
-     cons  -> [H|T]
-     pair  -> {A,B}            (untagged tuple)
-     O     -> 0                (nat literals fold to one integer)
-     S x   -> call 'erlang':'+'(x, 1)
-   Matching code destructures the same representations (see
-   trans_pattern and trans_case). *)
 and trans_constructor ctx r args =
   (* natively lowered constructors are handled by [Cenative];
      everything else falls back to the tagged encoding *)

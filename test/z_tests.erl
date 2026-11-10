@@ -19,12 +19,6 @@ absdiff_test() ->
     ?assertEqual(15, z:absdiff(10, 25)),
     ?assertEqual(15, z:absdiff(25, 10)).
 
-%% Z.compare returns the Comparison constructors: 'Eq' | 'Lt' | 'Gt'
-cmp_test() ->
-    ?assertEqual('Eq', z:cmp(5, 5)),
-    ?assertEqual('Lt', z:cmp(4, 5)),
-    ?assertEqual('Gt', z:cmp(6, 5)).
-
 %% boolean results are the native atoms
 eq_test() ->
     ?assertEqual('true', z:eq(3, 3)),

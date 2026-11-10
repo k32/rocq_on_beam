@@ -14,7 +14,6 @@ Definition sum (x y : Z) : Z := x + y.
 Definition prod (x y : Z) : Z := x * y.
 Definition mx (x y : Z) : Z := Z.max x y.
 Definition absdiff (x y : Z) : Z := Z.abs (x - y).
-Definition cmp (x y : Z) : comparison := Z.compare x y.
 Definition eq (x y : Z) : bool := x =? y.
 
 (* partially applied library function *)
@@ -33,5 +32,5 @@ Definition sgn (z : Z) : Z :=
   end.
 
 CoreErlang Extraction "test_core/z" fourtytwo minus7 big
-  sum prod mx absdiff cmp eq
+  sum prod mx absdiff eq
   half_away ofn ton sgn.

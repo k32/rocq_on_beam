@@ -366,292 +366,130 @@ let is_native_branch (pat : ml_pattern) =
    whether the user imported Corelib or Stdlib. *)
 (* -------------------------------------------------------------------- *)
 
-type zop =
-  | Bin of string (* 'erlang':'f'(A,B) *)
-  | Un of string (* 'erlang':'f'(A) *)
-  | Const2 of string * int (* 'erlang':'f'(A, c) *)
-  | Compare (* 3-way case, returns 'Eq' | 'Lt' | 'Gt' *)
-  | Identity (* fun X -> X *)
-  | EqDec (* decidable equality: 'left' | 'right' *)
+(* -------------------------------------------------------------------- *)
+(* Remote calls: what a global constant becomes natively.                *)
+(*                                                                       *)
+(* Purely a data question: [global_target] maps a global to a native    *)
+(* call target (module, function, arity, number of leading arguments    *)
+(* to drop untranslated -- the EqDec dictionary) or a fixed value.      *)
+(* Currying/eta handling is NOT done here; [cetrans] owns the single    *)
+(* application engine and renders fully-applied calls via              *)
+(* [render_call].                                                        *)
+(*                                                                       *)
+(* Z.compare and Nat.eq_dec have no entries (dropped for now); usage    *)
+(* shows up as an unextracted-constant error in the translation.        *)
+(* -------------------------------------------------------------------- *)
 
-let z_entries =
-  [
-    ( [
-        "Corelib.BinNums.IntDef.Z.add";
-        "Stdlib.ZArith.BinIntDef.Z.add";
-        "Stdlib.ZArith.BinInt.Z.add";
-      ],
-      Bin "+" );
-    ( [
-        "Corelib.BinNums.IntDef.Z.sub";
-        "Stdlib.ZArith.BinIntDef.Z.sub";
-        "Stdlib.ZArith.BinInt.Z.sub";
-      ],
-      Bin "-" );
-    ( [
-        "Corelib.BinNums.IntDef.Z.mul";
-        "Stdlib.ZArith.BinIntDef.Z.mul";
-        "Stdlib.ZArith.BinInt.Z.mul";
-      ],
-      Bin "*" );
-    ( [
-        "Corelib.BinNums.IntDef.Z.max";
-        "Stdlib.ZArith.BinIntDef.Z.max";
-        "Stdlib.ZArith.BinInt.Z.max";
-      ],
-      Bin "max" );
-    ( [
-        "Corelib.BinNums.IntDef.Z.min";
-        "Stdlib.ZArith.BinIntDef.Z.min";
-        "Stdlib.ZArith.BinInt.Z.min";
-      ],
-      Bin "min" );
-    ( [
-        "Corelib.BinNums.IntDef.Z.opp";
-        "Stdlib.ZArith.BinIntDef.Z.opp";
-        "Stdlib.ZArith.BinInt.Z.opp";
-      ],
-      Const2 ("-", 0) );
-    ( [
-        "Corelib.BinNums.IntDef.Z.succ";
-        "Stdlib.ZArith.BinIntDef.Z.succ";
-        "Stdlib.ZArith.BinInt.Z.succ";
-      ],
-      Const2 ("+", 1) );
-    ( [
-        "Corelib.BinNums.IntDef.Z.pred";
-        "Stdlib.ZArith.BinIntDef.Z.pred";
-        "Stdlib.ZArith.BinInt.Z.pred";
-      ],
-      Const2 ("-", 1) );
-    ( [
-        "Corelib.BinNums.IntDef.Z.abs";
-        "Stdlib.ZArith.BinIntDef.Z.abs";
-        "Stdlib.ZArith.BinInt.Z.abs";
-      ],
-      Un "abs" );
-    ( [
-        "Corelib.BinNums.IntDef.Z.eqb";
-        "Stdlib.ZArith.BinIntDef.Z.eqb";
-        "Stdlib.ZArith.BinInt.Z.eqb";
-      ],
-      Bin "=:=" );
-    ( [
-        "Corelib.BinNums.IntDef.Z.leb";
-        "Stdlib.ZArith.BinIntDef.Z.leb";
-        "Stdlib.ZArith.BinInt.Z.leb";
-      ],
-      Bin "=<" );
-    ( [
-        "Corelib.BinNums.IntDef.Z.ltb";
-        "Stdlib.ZArith.BinIntDef.Z.ltb";
-        "Stdlib.ZArith.BinInt.Z.ltb";
-      ],
-      Bin "<" );
-    ( [
-        "Corelib.BinNums.IntDef.Z.compare";
-        "Stdlib.ZArith.BinIntDef.Z.compare";
-        "Stdlib.ZArith.BinInt.Z.compare";
-      ],
-      Compare );
-    ( [
-        "Corelib.BinNums.IntDef.Z.of_nat";
-        "Stdlib.ZArith.BinIntDef.Z.of_nat";
-        "Stdlib.ZArith.BinInt.Z.of_nat";
-      ],
-      Identity );
-    ( [ "Stdlib.Arith.PeanoNat.Nat.eq_dec"; "Corelib.Arith.PeanoNat.Nat.eq_dec" ],
-      EqDec );
-    ( [
-        "Corelib.BinNums.IntDef.Z.to_nat";
-        "Stdlib.ZArith.BinIntDef.Z.to_nat";
-        "Stdlib.ZArith.BinInt.Z.to_nat";
-      ],
-      Identity );
-  ]
+type target =
+  | NativeCall of Cerlang.atom * Cerlang.atom * int * int
+    (* module, function, arity, leading arguments to drop *)
+  | NativeIdentity  (* the identity: the argument itself (e.g. Z.of_nat) *)
+  | NativeValue of Cerlang.expr  (* a fixed value *)
+  | NotNative
 
-let zops =
-  lazy
-    (List.concat_map
-       (fun (qs, op) ->
-         List.filter_map
-           (fun q ->
-             match locate_global [ q ] with
-             | Some g -> Some (g, op)
-             | None -> None)
-           qs)
-       z_entries)
+(* fixed HMap.make: the empty map literal *)
+let erlangbif_make = lazy (locate_global [ "ErlangBIF.HMap.make" ])
 
-let zop_of (r : global) =
-  let tbl = Lazy.force zops in
-  List.find_opt (fun (g, _) -> r.glob = g) tbl |> Option.map snd
+let erlangbif_names = [
+  "ErlangBIF.HMap.make";
+  "ErlangBIF.HMap.put";
+  "ErlangBIF.HMap.find";
+  "ErlangBIF.HMap.remove";
+  "ErlangBIF.HMap.keys";
+  "ErlangBIF.HMap.fold";
+]
 
-(* apply an operator to exactly [op_arity] argument expressions;
-   [fresh] mints a fresh variable (for the Compare case) *)
-let op_apply ~(fresh : unit -> Cerlang.var) op (args : Cerlang.expr list) :
-    Cerlang.expr =
-  let open Cerlang in
-  match (op, args) with
-  | Bin f, [ a; b ] -> erlang_call f [ a; b ]
-  | Un f, [ a ] -> erlang_call f [ a ]
-  | Const2 (f, c), [ a ] -> erlang_call f [ a; EInt (string_of_int c) ]
-  | Identity, [ a ] -> a
-  | Compare, [ a; b ] ->
-      let x = fresh () in
-      ECase
-        ( a,
-          [
-            (PVar x, erlang_call "=:=" [ EVar x; b ], EAtom (Atom "Eq"));
-            (PVar x, erlang_call "<" [ EVar x; b ], EAtom (Atom "Lt"));
-            (PVar x, guard_true, EAtom (Atom "Gt"));
-          ] )
-  | EqDec, [ a; b ] ->
-      let x = fresh () in
-      ECase
-        ( a,
-          [
-            (PVar x, erlang_call "=:=" [ EVar x; b ], EAtom (Atom "left"));
-            (PVar x, guard_true, EAtom (Atom "right"));
-          ] )
+let native_targets = lazy (
+  List.concat_map
+    (fun (qs, m, f, arity, drop) ->
+      List.filter_map
+        (fun q ->
+          match locate_global [ q ] with
+          | Some g -> Some (g, NativeCall (Cerlang.Atom m, Cerlang.Atom f, arity, drop))
+          | None -> None)
+        qs)
+    ([ [ "Corelib.BinNums.IntDef.Z.add"; "Stdlib.ZArith.BinIntDef.Z.add";
+         "Stdlib.ZArith.BinInt.Z.add" ],
+        "erlang", "+", 2, 0;
+       [ "Corelib.BinNums.IntDef.Z.sub"; "Stdlib.ZArith.BinIntDef.Z.sub";
+         "Stdlib.ZArith.BinInt.Z.sub" ],
+        "erlang", "-", 2, 0;
+       [ "Corelib.BinNums.IntDef.Z.mul"; "Stdlib.ZArith.BinIntDef.Z.mul";
+         "Stdlib.ZArith.BinInt.Z.mul" ],
+        "erlang", "*", 2, 0;
+       [ "Corelib.BinNums.IntDef.Z.max"; "Stdlib.ZArith.BinIntDef.Z.max";
+         "Stdlib.ZArith.BinInt.Z.max" ],
+        "erlang", "max", 2, 0;
+       [ "Corelib.BinNums.IntDef.Z.min"; "Stdlib.ZArith.BinIntDef.Z.min";
+         "Stdlib.ZArith.BinInt.Z.min" ],
+        "erlang", "min", 2, 0;
+       [ "Corelib.BinNums.IntDef.Z.opp"; "Stdlib.ZArith.BinIntDef.Z.opp";
+         "Stdlib.ZArith.BinInt.Z.opp" ],
+        "erlang", "-", 2, 0 (* 0 - X *);
+       [ "Corelib.BinNums.IntDef.Z.succ"; "Stdlib.ZArith.BinIntDef.Z.succ";
+         "Stdlib.ZArith.BinInt.Z.succ" ],
+        "erlang", "+", 2, 0 (* X + 1 *);
+       [ "Corelib.BinNums.IntDef.Z.pred"; "Stdlib.ZArith.BinIntDef.Z.pred";
+         "Stdlib.ZArith.BinInt.Z.pred" ],
+        "erlang", "-", 2, 0 (* X - 1 *);
+       [ "Corelib.BinNums.IntDef.Z.abs"; "Stdlib.ZArith.BinIntDef.Z.abs";
+         "Stdlib.ZArith.BinInt.Z.abs" ],
+        "erlang", "abs", 1, 0;
+       [ "Corelib.BinNums.IntDef.Z.eqb"; "Stdlib.ZArith.BinIntDef.Z.eqb";
+         "Stdlib.ZArith.BinInt.Z.eqb" ],
+        "erlang", "=:=", 2, 0;
+       [ "Corelib.BinNums.IntDef.Z.leb"; "Stdlib.ZArith.BinIntDef.Z.leb";
+         "Stdlib.ZArith.BinInt.Z.leb" ],
+        "erlang", "=<", 2, 0;
+       [ "Corelib.BinNums.IntDef.Z.ltb"; "Stdlib.ZArith.BinIntDef.Z.ltb";
+         "Stdlib.ZArith.BinInt.Z.ltb" ],
+        "erlang", "<", 2, 0;
+       [ "Corelib.BinNums.IntDef.Z.of_nat"; "Stdlib.ZArith.BinIntDef.Z.of_nat";
+         "Stdlib.ZArith.BinInt.Z.of_nat" ],
+        "erlang", "", 1, 0; (* identity, see NativeIdentity *)
+       [ "Corelib.BinNums.IntDef.Z.to_nat"; "Stdlib.ZArith.BinIntDef.Z.to_nat";
+         "Stdlib.ZArith.BinInt.Z.to_nat" ],
+        "erlang", "", 1, 0;
+       (* ErlangBIF.HMap: the EqDec dictionary is dropped untranslated *)
+       [ "ErlangBIF.HMap.put" ], "maps", "put", 3, 1;
+       [ "ErlangBIF.HMap.find" ], "maps", "find", 2, 1;
+       [ "ErlangBIF.HMap.remove" ], "maps", "remove", 2, 1;
+       [ "ErlangBIF.HMap.keys" ], "maps", "keys", 1, 1;
+       [ "ErlangBIF.HMap.fold" ], "maps", "fold", 3, 1 ]))
+
+let global_target (r : global) : target =
+  match List.find_opt (fun (g, _) -> r.glob = g) (Lazy.force native_targets) with
+  | Some (_, NativeCall (_, f, 1, 0)) when (match f with Cerlang.Atom n -> n = "") -> NativeIdentity
+  | Some (_, t) -> t
+  | None ->
+    (match Lazy.force erlangbif_make with
+     | Some g when r.glob = g -> NativeValue (Cerlang.EMap [])
+     | _ -> NotNative)
+
+(* arity of the native call, if this global is one *)
+let call_arity r =
+  match global_target r with
+  | NativeCall (_, _, a, _) -> Some a
+  | _ -> None
+
+(* render a fully-applied native call (exactly [arity] translated args,
+ * after* dropping) *)
+let render_call t args =
+  match (t, args) with
+  | NativeCall (m, f, _, _), a -> Cerlang.ECall (m, f, a)
+  | NativeIdentity, [ a ] -> a
   | _ -> assert false
 
-(* the operator's arity *)
-let op_arity = function
-  | Bin _ -> 2
-  | Un _ -> 1
-  | Const2 _ -> 1
-  | Compare -> 2
-  | Identity -> 1
-  | EqDec -> 2
-
-(* -------------------------------------------------------------------- *)
-(* ErlangBIF: the support library is for Rocq code only.                 *)
-(*                                                                       *)
-(* Its HMap implementation (Storage over association lists, the wrap    *)
-(* wrapper) is never lowered as is: the runtime representation is a     *)
-(* native Erlang map, and every method is rewritten to the isomorphic   *)
-(* maps module call -- matching on the type and method name only.       *)
-(* The EqDec dictionary that extraction keeps as a leading argument is  *)
-(* dropped (native maps compare keys themselves).                        *)
-(* -------------------------------------------------------------------- *)
-
-(* extracted arity (EqDec dictionary first, absent for make) and the
-   maps module function it becomes; make is the empty map literal *)
-let erlangbif_table =
-  [
-    ("ErlangBIF.HMap.make", 0, None);
-    ("ErlangBIF.HMap.put", 4, Some "put");
-    ("ErlangBIF.HMap.find", 3, Some "find");
-    ("ErlangBIF.HMap.remove", 3, Some "remove");
-    ("ErlangBIF.HMap.keys", 2, Some "keys");
-    ("ErlangBIF.HMap.fold", 4, Some "fold");
-  ]
-
-let erlangbif_name (r : global) =
-  let path = ModPath.to_string (Table.modpath_of_r r) in
-  let label = Id.to_string (Table.label_of_r r) in
-  List.find_opt (fun (n, _, _) -> n = path ^ "." ^ label) erlangbif_table
-
-(* by kernel name, for skipping declarations *)
+(* is the kernel name one of the ErlangBIF definitions (never emitted
+   as fundefs)? *)
 let is_erlangbif_kn kn =
-  let path = ModPath.to_string (KerName.modpath kn) in
-  let label = Id.to_string (KerName.label kn) in
-  List.exists (fun (n, _, _) -> n = path ^ "." ^ label) erlangbif_table
-
-let is_erlangbif r = erlangbif_name r <> None
-
-(* the call arity of a native/erlangbif function, if known *)
-let call_arity r =
-  match erlangbif_name r with
-  | Some (_, a, _) -> Some a
-  | None -> Option.map op_arity (zop_of r)
-
-(* the maps call (or literal) for already-translated args, which must
-   include the EqDec dictionary; partial applications eta-expand *)
-let translate_bif_apply ~(fresh : unit -> Cerlang.var) ~(note : string -> unit)
-    r (args : Cerlang.expr list) : Cerlang.expr =
-  match erlangbif_name r with
-  | None -> assert false
-  | Some (_, arity, Some mfun) ->
-      let rec take k = function
-        | [] -> []
-        | _ :: _ when k = 0 -> []
-        | h :: t -> h :: take (k - 1) t
-      in
-      let drop_eq l = match l with _ :: t -> t | [] -> [] in
-      if List.length args >= arity then
-        Cerlang.ECall
-          (Cerlang.Atom "maps", Cerlang.Atom mfun, drop_eq (take arity args))
-      else (
-        note "partial application of an ErlangBIF function";
-        let miss = arity - List.length args in
-        let extra = List.init miss (fun _ -> fresh ()) in
-        Cerlang.EFun
-          ( extra,
-            Cerlang.ECall
-              ( Cerlang.Atom "maps",
-                Cerlang.Atom mfun,
-                drop_eq (args @ List.map (fun w -> Cerlang.EVar w) extra) ) ) )
-  | Some (_, 0, None) -> Cerlang.EMap [] (* make: the empty map *)
-  | Some _ -> assert false
-
-(* a builtin used as a value *)
-let translate_bif_value ~(fresh : unit -> Cerlang.var) ~(note : string -> unit)
-    r : Cerlang.expr =
-  note "ErlangBIF function used as a value (closure synthesized)";
-  match erlangbif_name r with
-  | None -> assert false
-  | Some (_, _, None) -> Cerlang.EMap []
-  | Some (_, arity, Some mfun) ->
-      let vars = List.init arity (fun _ -> fresh ()) in
-      let args = List.tl (List.map (fun w -> Cerlang.EVar w) vars) in
-      let args =
-        if mfun = "fold" then
-          match args with [ f; m; a ] -> [ f; a; m ] | _ -> args
-        else args
-      in
-      Cerlang.EFun
-        (vars, Cerlang.ECall (Cerlang.Atom "maps", Cerlang.Atom mfun, args))
-
-(* -------------------------------------------------------------------- *)
-(* Query interface used by [cetrans]                                     *)
-(*                                                                       *)
-(*  Boolean queries ([is_native_call], [is_native_constructor], ...)      *)
-(*  decide; the [translate_*] functions take control and receive the     *)
-(*  already-translated arguments / a translation continuation.           *)
-(* -------------------------------------------------------------------- *)
-
-(* ---- applications of Z library functions ---- *)
-
-let is_native_call (r : global) = zop_of r <> None
-
-(* [translate_apply ~fresh r args] handles an application of a Z
-   library function to already-translated [args], eta-expanding when
-   the application is partial (Core Erlang calls are uncurried). *)
-let translate_apply ~(fresh : unit -> Cerlang.var) ~(note : string -> unit)
-    (r : global) (args : Cerlang.expr list) : Cerlang.expr =
-  let op = match zop_of r with Some o -> o | None -> assert false in
-  let n = op_arity op in
-  let rec take k = function
-    | [] -> []
-    | _ :: _ when k = 0 -> []
-    | h :: t -> h :: take (k - 1) t
+  let name =
+    ModPath.to_string (KerName.modpath kn) ^ "." ^ Id.to_string (KerName.label kn)
   in
-  if List.length args >= n then op_apply ~fresh op (take n args)
-  else (
-    note "partial application of a library function";
-    let miss = n - List.length args in
-    let extra = List.init miss (fun _ -> fresh ()) in
-    Cerlang.EFun
-      ( extra,
-        op_apply ~fresh op (args @ List.map (fun w -> Cerlang.EVar w) extra) ) )
+  List.mem name erlangbif_names
 
-(* a Z library function used as a value: synthesize its closure *)
-let translate_value ~(fresh : unit -> Cerlang.var) ~(note : string -> unit)
-    (r : global) : Cerlang.expr =
-  note "library function used as a value (closure synthesized)";
-  let op = match zop_of r with Some o -> o | None -> assert false in
-  let n = op_arity op in
-  let vars = List.init n (fun _ -> fresh ()) in
-  Cerlang.EFun
-    (vars, op_apply ~fresh op (List.map (fun w -> Cerlang.EVar w) vars))
+let is_erlangbif r =
+  let name =
+    ModPath.to_string (Table.modpath_of_r r) ^ "." ^ Id.to_string (Table.label_of_r r)
+  in
+  List.mem name erlangbif_names
