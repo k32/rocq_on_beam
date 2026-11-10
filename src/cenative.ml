@@ -96,8 +96,8 @@ let native_hmapw = gr_of [ "ErlangBIF.HMap.wrap" ]
 
 (* MapFindResult from ErlangTypes: isomorphic to native maps:find's
    {ok, Value} | error *)
-let native_ok = gr_of [ "ErlangTypes.Ok" ]
-let native_error = gr_of [ "ErlangTypes.Error" ]
+let native_ok = gr_of [ "ErlangTypes.ok" ]
+let native_error = gr_of [ "ErlangTypes.error" ]
 
 let is_native (r : global) = function
   | (lazy (Some g)) -> r.glob = g

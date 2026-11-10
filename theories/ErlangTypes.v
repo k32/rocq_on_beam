@@ -5,5 +5,5 @@
 
 (* isomorphic to native maps:find's result: {ok, Value} | error *)
 Inductive MapFindResult {V : Type} : Type :=
-| Ok : V -> MapFindResult
-| Error : MapFindResult.
+| ok : V -> MapFindResult
+| error : MapFindResult.

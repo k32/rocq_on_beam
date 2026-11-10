@@ -39,8 +39,8 @@ Definition put (k : K) (v : V) (s : @t K V) : @t K V :=
 (* like native maps:find: {ok, Value} | error *)
 Definition find (k : K) (s : @t K V) : MapFindResult :=
   match get k (unwrap s) with
-  | Some v => Ok v
-  | None => Error
+  | Some v => ok v
+  | None => error
   end.
 
 Definition remove (k : K) (s : @t K V) : @t K V :=

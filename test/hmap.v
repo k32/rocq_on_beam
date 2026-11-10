@@ -22,8 +22,8 @@ Definition sum : nat := HMap.fold nat (fun k v a => k * v + a) 0 m1.
 (* matching on MapFindResult from Rocq code *)
 Definition get_or_zero (k : nat) : nat :=
   match lookup k with
-  | Ok v => v
-  | Error => 0
+  | ok v => v
+  | error => 0
   end.
 
 CoreErlang Extraction "test_core/hmap" m1 lookup add sum get_or_zero.
