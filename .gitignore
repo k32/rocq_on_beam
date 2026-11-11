@@ -11,3 +11,7 @@ build/
 *~
 \#*\#
 rocq.beam
+test/extracted/
+test/_anvl_build/
+test/plugin/*.cmxs
+test/plugin/*.cma

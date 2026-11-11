@@ -63,11 +63,20 @@ same monolithic module, as with the usual `Extraction "file" ...`.
 
 ## Building & testing
 
+The OCaml plugin and the Rocq theories are built with dune; the test
+pipeline (Rocq extraction → Core Erlang compilation → eunit) is driven
+by ANVL:
+
 ```sh
-make check   # build plugin + extract + compile + run the eunit suite
-make build   # build and stage the plugin only
-make clean   # remove test_core/
+dune build          # plugin + theories
+(cd test && anvl all)   # extract, compile, run the eunit suite
 ```
+
+`test/anvl.erl` defines the ANVL conditions: `build_inputs` (dune),
+`extraction` (rocq c per test/*.v), `cores_compiled` (compile:file +
+from_core), `compile` (anvl_erlc builds the suites app) and `all`
+(runs the aggregator eunit suite in-process, reloading modules first).
+The extracted modules land in `test/extracted/` (gitignored).
 
 The Makefile rules are abstract: a new test `test/foo.v` (containing
 `CoreErlang Extraction "foo" ...`) plus `test/foo_tests.erl`

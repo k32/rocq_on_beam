@@ -1,0 +1,3 @@
+{application, rocq_core_erlang_test,
+ [{description, "Core Erlang extraction test suites"},
+  {vsn, "0.1.0"}, {applications, [kernel, stdlib, eunit]}]}.
