@@ -1,5 +1,7 @@
 (include dune.inc)
 
+;; Dune config generation
+
 (rule
  (deps (source_tree .))
  (action
