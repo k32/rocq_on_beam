@@ -25,98 +25,65 @@ module Miniml = Extraction_plugin.Miniml
 open Miniml
 
 (* -------------------------------------------------------------------- *)
-(* Registry                                                             *)
+(* Constructor classification, by plain pattern matching on the         *)
+(* (label, module path); no lists, no searching, no name resolution.     *)
+(*                                                                       *)
+(* NB: match on (label, module path) strings, not on GlobRefs:          *)
+(* constructors of one inductive share a KerName, so [Table.repr_of_r] *)
+(* is not constructor-specific (O and S would be indistinguishable).    *)
 (* -------------------------------------------------------------------- *)
 
-let locate_global names =
-  List.fold_left
-    (fun acc q ->
-      match acc with
-      | Some _ -> acc
-      | None -> (
-          try Some (Smartlocate.global_with_alias (Libnames.qualid_of_string q))
-          with _ -> None))
-    None names
+type ctor =
+  | CNil | CCons | CPair
+  | CO | CS
+  | CZ0 | CZpos | CZneg
+  | CxH | CxO | CxI
+  | CHMapW
+  | COk | CError
 
-(* resolved lazily: the stdlib may not be loaded when the plugin loads.
-   We compare [GlobRef.t]s rather than kernel names: constructors of
-   one inductive share a KerName ([Table.repr_of_r] is not
-   constructor-specific), which would make O and S indistinguishable. *)
-let gr_of names = lazy (locate_global names)
+let global_to_ctor (r : global) : ctor option =
+  match r.glob with
+  | GlobRef.ConstructRef ((mind, _), index) ->
+    (* constructors of one inductive share label and kernel name; the
+       constructor index (1-based) tells them apart *)
+    let ind =
+      { glob = GlobRef.IndRef (mind, 0); inst = InfvInst.empty }
+    in
+    let name = Id.to_string (Table.label_of_r ind) in
+    let m = ModPath.to_string (Table.modpath_of_r ind) in
+    (match (name, m, index) with
+     | "list", ("Corelib.Init.Datatypes" | "Stdlib.Datatypes" | "Coq.Datatypes"), 1 -> Some CNil
+     | "list", ("Corelib.Init.Datatypes" | "Stdlib.Datatypes" | "Coq.Datatypes"), 2 -> Some CCons
+     | "prod", ("Corelib.Init.Datatypes" | "Stdlib.Datatypes" | "Coq.Datatypes"), 1 -> Some CPair
+     | "nat", ("Corelib.Init.Datatypes" | "Stdlib.Init.Datatypes" | "Coq.Init.Datatypes"), 1 -> Some CO
+     | "nat", ("Corelib.Init.Datatypes" | "Stdlib.Init.Datatypes" | "Coq.Init.Datatypes"), 2 -> Some CS
+     | ("Z" | "positive"), "Corelib.Numbers.BinNums", _ ->
+       Some
+         (* constructor order in BinNums: Z: Z0, Zpos, Zneg;
+          positive: xI, xO, xH *)
+       (match (name, index) with
+          | "Z", 1 -> CZ0 | "Z", 2 -> CZpos | "Z", 3 -> CZneg
+          | _, 1 -> CxI | _, 2 -> CxO | _ -> CxH)
+     | "t", "ErlangBIF.HMap", 1 -> Some CHMapW (* wrap; empty is unused *)
+     | "MapFindResult", "ErlangTypes", 1 -> Some COk
+     | "MapFindResult", "ErlangTypes", 2 -> Some CError
+     | _ -> None)
+  | _ -> None
 
-let native_nil =
-  gr_of
-    [
-      "Corelib.Init.Datatypes.nil"; "Stdlib.Datatypes.nil"; "Coq.Datatypes.nil";
-    ]
-
-let native_cons =
-  gr_of
-    [
-      "Corelib.Init.Datatypes.cons";
-      "Stdlib.Datatypes.cons";
-      "Coq.Datatypes.cons";
-    ]
-
-let native_pair =
-  gr_of
-    [
-      "Corelib.Init.Datatypes.pair";
-      "Stdlib.Datatypes.pair";
-      "Coq.Datatypes.pair";
-    ]
-
-let native_O =
-  gr_of
-    [
-      "Corelib.Init.Datatypes.O";
-      "Stdlib.Init.Datatypes.O";
-      "Coq.Init.Datatypes.O";
-    ]
-
-let native_S =
-  gr_of
-    [
-      "Corelib.Init.Datatypes.S";
-      "Stdlib.Init.Datatypes.S";
-      "Coq.Init.Datatypes.S";
-    ]
-
-(* Z and positive constructors (binary integers) *)
-let native_Z0 = gr_of [ "Corelib.Numbers.BinNums.Z0" ]
-let native_Zpos = gr_of [ "Corelib.Numbers.BinNums.Zpos" ]
-let native_Zneg = gr_of [ "Corelib.Numbers.BinNums.Zneg" ]
-let native_xH = gr_of [ "Corelib.Numbers.BinNums.xH" ]
-let native_xO = gr_of [ "Corelib.Numbers.BinNums.xO" ]
-let native_xI = gr_of [ "Corelib.Numbers.BinNums.xI" ]
-
-(* the HMap wrapper from our Erlang support library (present only when
-   the theories are loaded): discerns a map from a regular list *)
-let native_hmapw = gr_of [ "ErlangBIF.HMap.wrap" ]
-
-(* MapFindResult from ErlangTypes: isomorphic to native maps:find's
-   {ok, Value} | error *)
-let native_ok = gr_of [ "ErlangTypes.ok" ]
-let native_error = gr_of [ "ErlangTypes.error" ]
-
-let is_native (r : global) = function
-  | (lazy (Some g)) -> r.glob = g
-  | (lazy None) -> false
-
-let is_nil r = is_native r native_nil
-let is_cons r = is_native r native_cons
-let is_pair r = is_native r native_pair
-let is_O r = is_native r native_O
-let is_S r = is_native r native_S
-let is_Z0 r = is_native r native_Z0
-let is_Zpos r = is_native r native_Zpos
-let is_Zneg r = is_native r native_Zneg
-let is_xH r = is_native r native_xH
-let is_xO r = is_native r native_xO
-let is_xI r = is_native r native_xI
-let is_hmapw r = is_native r native_hmapw
-let is_ok r = is_native r native_ok
-let is_error r = is_native r native_error
+let is_nil r = match global_to_ctor r with Some CNil -> true | _ -> false
+let is_cons r = match global_to_ctor r with Some CCons -> true | _ -> false
+let is_pair r = match global_to_ctor r with Some CPair -> true | _ -> false
+let is_O r = match global_to_ctor r with Some CO -> true | _ -> false
+let is_S r = match global_to_ctor r with Some CS -> true | _ -> false
+let is_Z0 r = match global_to_ctor r with Some CZ0 -> true | _ -> false
+let is_Zpos r = match global_to_ctor r with Some CZpos -> true | _ -> false
+let is_Zneg r = match global_to_ctor r with Some CZneg -> true | _ -> false
+let is_xH r = match global_to_ctor r with Some CxH -> true | _ -> false
+let is_xO r = match global_to_ctor r with Some CxO -> true | _ -> false
+let is_xI r = match global_to_ctor r with Some CxI -> true | _ -> false
+let is_hmapw r = match global_to_ctor r with Some CHMapW -> true | _ -> false
+let is_ok r = match global_to_ctor r with Some COk -> true | _ -> false
+let is_error r = match global_to_ctor r with Some CError -> true | _ -> false
 
 (* -------------------------------------------------------------------- *)
 (* Helpers shared by the lowering rules                                  *)
@@ -135,8 +102,6 @@ let guard_true = Cerlang.EAtom (Cerlang.Atom "true")
    arithmetic calls instead of one huge integer *)
 let nat_fold_limit = 100000
 
-(* number of S constructors enclosing the O of a nat literal, if [t]
-   is a literal nat *)
 let rec nat_literal = function
   | MLcons (_, r, []) when is_O r -> Some 0
   | MLcons (_, r, [ t ]) when is_S r -> Option.map (( + ) 1) (nat_literal t)
@@ -163,10 +128,7 @@ let z_literal = function
 (* Constructors and patterns                                             *)
 (* -------------------------------------------------------------------- *)
 
-let is_native_constructor (r : global) =
-  is_nil r || is_cons r || is_pair r || is_O r || is_S r || is_Z0 r || is_Zpos r
-  || is_Zneg r || is_xH r || is_xO r || is_xI r || is_hmapw r || is_ok r
-  || is_error r
+let is_native_constructor (r : global) = global_to_ctor r <> None
 
 (* Constructor translation for a natively lowered constructor
    (total when [is_native_constructor r] holds); [tr] translates
@@ -179,114 +141,102 @@ let is_native_constructor (r : global) =
      S x   -> call 'erlang':'+'(x, 1)
      Z0    -> 0;  Zpos p -> p;  Zneg p -> 0 - p
      xH    -> 1;  xO p -> 2*p;  xI p -> 2*p + 1
-     HMap.Wrap l -> {'HMapW', l}   (the map wrapper: discerns a map
-                                    from the regular native list inside) *)
+     wrap l -> call 'maps':'from_list' (l)   (the Rocq map representation
+                                              bridges to the native map)
+     ok v  -> {'ok', v};  error -> 'error' *)
 let translate_constructor (tr : ml_ast -> Cerlang.expr) (r : global)
     (args : ml_ast list) : Cerlang.expr =
   let open Cerlang in
   let bad name =
     ETuple (EAtom (Atom ("coq_bad_" ^ name)) :: List.map tr args)
   in
-  if is_nil r && args = [] then ENil
-  else if is_cons r then
-    match args with [ h; t ] -> ECons (tr h, tr t) | _ -> bad "cons"
-  else if is_pair r then ETuple (List.map tr args)
-  else if is_O r && args = [] then EInt "0"
-  else if is_S r then
-    match args with
-    | [ t ] -> (
-        match nat_literal (MLcons (Tunknown, r, [ t ])) with
-        | Some n when n <= nat_fold_limit -> EInt (string_of_int n)
-        | _ -> erlang_call "+" [ tr t; EInt "1" ])
-    | _ -> bad "S"
-  else if is_Z0 r && args = [] then EInt "0"
-  else if is_Zpos r then
-    (* a positive is lowered to its integer value: Zpos p = p *)
-    match args with
-    | [ t ] -> (
-        match z_literal (MLcons (Tunknown, r, [ t ])) with
-        | Some n -> EInt (Z.to_string n)
-        | _ -> tr t)
-    | _ -> bad "Zpos"
-  else if is_Zneg r then
-    match args with
-    | [ t ] -> (
-        match z_literal (MLcons (Tunknown, r, [ t ])) with
-        | Some n -> EInt (Z.to_string n)
-        | _ -> erlang_call "-" [ EInt "0"; tr t ])
-    | _ -> bad "Zneg"
-  else if is_xH r && args = [] then EInt "1"
-  else if is_hmapw r then
-    (* the Rocq representation (wrapped association list) bridges to
-       the native map representation *)
-    match args with
-    | [ l ] -> Cerlang.EApply (Cerlang.CGlobal (Cerlang.Atom "maps", Cerlang.Atom "from_list"), [ tr l ])
-    | _ -> bad "HMapW"
-  else if is_ok r then
-    match args with
-    | [ v ] -> ETuple [ EAtom (Atom "ok"); tr v ]
-    | _ -> bad "ok"
-  else if is_error r && args = [] then EAtom (Atom "error")
-  else if is_xO r || is_xI r then
-    match args with
-    | [ t ] -> (
-        match pos_literal (MLcons (Tunknown, r, [ t ])) with
-        | Some n -> EInt (Z.to_string n)
-        | _ ->
-            if is_xO r then erlang_call "*" [ tr t; EInt "2" ]
-            else
-              erlang_call "+" [ erlang_call "*" [ tr t; EInt "2" ]; EInt "1" ])
-    | _ -> bad "pos"
-  else assert false
+  match (global_to_ctor r, args) with
+  | Some CNil, [] -> ENil
+  | Some CCons, [ h; t ] -> ECons (tr h, tr t)
+  | Some CPair, _ -> ETuple (List.map tr args)
+  | Some CO, [] -> EInt "0"
+  | Some CS, [ t ] -> (
+      match nat_literal (MLcons (Tunknown, r, [ t ])) with
+      | Some n when n <= nat_fold_limit -> EInt (string_of_int n)
+      | _ -> erlang_call "+" [ tr t; EInt "1" ])
+  | Some CZ0, [] -> EInt "0"
+  | Some CZpos, [ t ] -> (
+      (* a positive is lowered to its integer value: Zpos p = p *)
+      match z_literal (MLcons (Tunknown, r, [ t ])) with
+      | Some n -> EInt (Z.to_string n)
+      | _ -> tr t)
+  | Some CZneg, [ t ] -> (
+      match z_literal (MLcons (Tunknown, r, [ t ])) with
+      | Some n -> EInt (Z.to_string n)
+      | _ -> erlang_call "-" [ EInt "0"; tr t ])
+  | Some CxH, [] -> EInt "1"
+  | Some CxO, [ t ] -> (
+      match pos_literal (MLcons (Tunknown, r, [ t ])) with
+      | Some n -> EInt (Z.to_string n)
+      | _ -> erlang_call "*" [ tr t; EInt "2" ])
+  | Some CxI, [ t ] -> (
+      match pos_literal (MLcons (Tunknown, r, [ t ])) with
+      | Some n -> EInt (Z.to_string n)
+      | _ ->
+          erlang_call "+" [ erlang_call "*" [ tr t; EInt "2" ]; EInt "1" ])
+  | Some CHMapW, [ l ] ->
+      Cerlang.EApply
+        (Cerlang.CGlobal (Cerlang.Atom "maps", Cerlang.Atom "from_list"),
+         [ tr l ])
+  | Some COk, [ v ] -> ETuple [ EAtom (Atom "ok"); tr v ]
+  | Some CError, [] -> EAtom (Atom "error")
+  | Some c, _ -> bad
+        (match c with
+        | CNil -> "nil" | CCons -> "cons" | CPair -> "pair"
+        | CO -> "O" | CS -> "S"
+        | CZ0 -> "Z0" | CZpos -> "Zpos" | CZneg -> "Zneg"
+        | CxH -> "xH" | CxO -> "xO" | CxI -> "xI"
+        | CHMapW -> "HMapW" | COk -> "ok" | CError -> "error")
+  | None, _ -> assert false
 
 (* Patterns that can be expressed as patterns (lists, pairs, nullary
    integer literals).  Arithmetic constructor patterns (O/S, Z,
    positive) cannot: shallow occurrences go through [translate_branch]
    instead, and deep ones have no native pattern at all. *)
 let is_native_pattern (r : global) =
-  is_nil r || is_cons r || is_pair r || is_O r || is_Z0 r || is_xH r || is_ok r
-  || is_error r
+  match global_to_ctor r with
+  | Some (CNil | CCons | CPair | CO | CZ0 | CxH | COk | CError) -> true
+  | _ -> false
 
 (* [translate_pattern sub r ps] (total when [is_native_pattern r]);
    [sub] translates the sub-patterns. *)
 let translate_pattern (sub : ml_pattern -> Cerlang.pattern) (r : global)
     (ps : ml_pattern list) : Cerlang.pattern =
   let open Cerlang in
-  if is_nil r && ps = [] then PNil
-  else if is_cons r then
-    match ps with
-    | [ h; t ] -> PCons (sub h, sub t)
-    | _ -> PTuple [ PAtom (Atom "coq_bad_cons") ]
-  else if is_pair r then PTuple (List.map sub ps)
-  else if (is_O r || is_Z0 r) && ps = [] then PInt "0"
-  else if is_xH r && ps = [] then PInt "1"
-  else if is_ok r then
-    match ps with
-    | [ p ] -> PTuple [ PAtom (Atom "ok"); sub p ]
-    | _ -> PTuple [ PAtom (Atom "ok") ]
-  else if is_error r && ps = [] then PAtom (Atom "error")
-  else assert false
+  match (global_to_ctor r, ps) with
+  | Some CNil, [] -> PNil
+  | Some CCons, [ h; t ] -> PCons (sub h, sub t)
+  | Some CPair, _ -> PTuple (List.map sub ps)
+  | Some (CO | CZ0), [] -> PInt "0"
+  | Some CxH, [] -> PInt "1"
+  | Some COk, [ p ] -> PTuple [ PAtom (Atom "ok"); sub p ]
+  | Some CError, [] -> PAtom (Atom "error")
+  | Some _, _ -> PTuple [ PAtom (Atom "coq_bad_cons") ] (* arity mismatch *)
+  | None, _ -> assert false
 
-(* Pusual: constructor applied to all its (named) arguments *)
-let is_native_usual (r : global) =
-  is_nil r || is_cons r || is_pair r || is_O r || is_Z0 r || is_xH r || is_ok r
-  || is_error r
+(* Pusual: constructor applied to all its (named) arguments; the same
+   shapes as [is_native_pattern] *)
+let is_native_usual r = is_native_pattern r
 
 let translate_pattern_usual (r : global) (names : Cerlang.var list) :
     Cerlang.pattern =
   let open Cerlang in
-  if is_nil r && names = [] then PNil
-  else if is_cons r then
-    match names with
-    | [ h; t ] -> PCons (PVar h, PVar t)
-    | l -> PTuple (PAtom (Atom "coq_bad_cons") :: List.map (fun v -> PVar v) l)
-  else if is_pair r then PTuple (List.map (fun v -> PVar v) names)
-  else if is_O r || is_Z0 r then PInt "0"
-  else if is_xH r then PInt "1"
-  else if is_ok r then
-    PTuple (PAtom (Atom "ok") :: List.map (fun w -> PVar w) names)
-  else if is_error r && names = [] then PAtom (Atom "error")
-  else assert false
+  match (global_to_ctor r, names) with
+  | Some CNil, [] -> PNil
+  | Some CCons, [ h; t ] -> PCons (PVar h, PVar t)
+  | Some CPair, _ -> PTuple (List.map (fun v -> PVar v) names)
+  | Some (CO | CZ0), _ -> PInt "0"
+  | Some CxH, _ -> PInt "1"
+  | Some COk, _ ->
+      PTuple (PAtom (Atom "ok") :: List.map (fun w -> PVar w) names)
+  | Some CError, [] -> PAtom (Atom "error")
+  | Some _, _ -> PTuple [ PAtom (Atom "coq_bad_cons") ]
+  | None, _ -> assert false
 
 (* -------------------------------------------------------------------- *)
 (* Match branches                                                        *)
@@ -318,27 +268,28 @@ let rewrite_branch (v : Cerlang.var) (pat : ml_pattern)
   | Pwild | Prel _ -> no_binder PWild guard_true
   | (Pcons (r, []) | Pusual r) when is_O r || is_Z0 r ->
       no_binder (PInt "0") guard_true
-  | (Pcons (r, []) | Pusual r) when is_xH r -> no_binder (PInt "1") guard_true
-  | Pcons (r, [ Pwild ]) | Pcons (r, [ Prel 1 ]) | Pusual r ->
-      if is_S r then
-        one_var
-          (erlang_call ">" [ x; EInt "0" ])
-          (fun _ -> erlang_call "-" [ x; EInt "1" ])
-      else if is_Zpos r then
-        one_var (erlang_call ">" [ x; EInt "0" ]) (fun _ -> x)
-      else if is_Zneg r then
-        one_var
-          (erlang_call "<" [ x; EInt "0" ])
-          (fun _ -> erlang_call "-" [ EInt "0"; x ])
-      else if is_xO r then
-        one_var
-          (erlang_call "=:=" [ erlang_call "band" [ x; EInt "1" ]; EInt "0" ])
-          (fun _ -> erlang_call "bsr" [ x; EInt "1" ])
-      else if is_xI r then
-        one_var
-          (erlang_call "=:=" [ erlang_call "band" [ x; EInt "1" ]; EInt "1" ])
-          (fun _ -> erlang_call "bsr" [ x; EInt "1" ])
-      else None
+  | (Pcons (r, []) | Pusual r) when is_xH r ->
+      no_binder (PInt "1") guard_true
+  | (Pcons (r, [ Pwild ]) | Pcons (r, [ Prel 1 ]) | Pusual r) -> (
+      match global_to_ctor r with
+      | Some CS ->
+          one_var
+            (erlang_call ">" [ x; EInt "0" ])
+            (fun _ -> erlang_call "-" [ x; EInt "1" ])
+      | Some CZpos -> one_var (erlang_call ">" [ x; EInt "0" ]) (fun _ -> x)
+      | Some CZneg ->
+          one_var
+            (erlang_call "<" [ x; EInt "0" ])
+            (fun _ -> erlang_call "-" [ EInt "0"; x ])
+      | Some CxO ->
+          one_var
+            (erlang_call "=:=" [ erlang_call "band" [ x; EInt "1" ]; EInt "0" ])
+            (fun _ -> erlang_call "bsr" [ x; EInt "1" ])
+      | Some CxI ->
+          one_var
+            (erlang_call "=:=" [ erlang_call "band" [ x; EInt "1" ]; EInt "1" ])
+            (fun _ -> erlang_call "bsr" [ x; EInt "1" ])
+      | _ -> None)
   | _ -> None
 
 (* Query + total entry point for the branch rewrite below *)
