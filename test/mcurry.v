@@ -1,7 +1,7 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 From Stdlib Require Import List ZArith Arith.
-Require Import Erlang.
+Require Import Erlang.Runtime.
 Import ListNotations.
 
 (* Curried uses of HMap methods: fold/find/remove partially applied and
@@ -39,4 +39,4 @@ Definition cremove (m : HMap.t) : HMap.t :=
 Definition cremove_result : list MapFindResult :=
   Eval vm_compute in map (HMap.find 1) [cremove m1; cremove m2].
 
-CoreErlang Extraction "test_core/mcurry" m1 m2 cfold cfind cremove cfold_result cfind_result cremove_result.
+CoreErlang Extraction "mcurry" m1 m2 cfold cfind cremove cfold_result cfind_result cremove_result.

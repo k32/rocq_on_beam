@@ -1,0 +1,15 @@
+(include dune.inc)
+
+;; Dune config generation
+
+(rule
+ (deps (source_tree .))
+ (action
+  (with-stdout-to
+   dune.inc.gen
+   (run ../test.gen/gen.exe))))
+
+(rule
+ (alias runtest)
+ (action
+  (diff dune.inc dune.inc.gen)))

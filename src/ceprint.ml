@@ -127,7 +127,7 @@ let rec emit_expr ctx e =
 | EFun (params, body) ->
      emit_fun params body
   | ELet (v, e1, e2) ->
-     let _ = List.map push [" let "; unvar v; " = "] in
+     let _ = List.map push ["let "; unvar v; " = "] in
      let _ = emit_expr ctx e1 in
      let _ = push " in " in
      emit_expr ctx e2
@@ -135,12 +135,12 @@ let rec emit_expr ctx e =
      let emit_binding i =
        let _ = List.map push [unatom i.lr_name; "/"; List.length i.lr_params |> string_of_int; " = "] in
        emit_fun i.lr_params i.lr_body in
-     let _ = push " letrec " in
+     let _ = push "letrec " in
      let _ = List.map emit_binding bindings in
      let _ = push " in " in
      emit_expr ctx body
   | ECase (scrutinee, branches) ->
-     let _ = push " case " in
+     let _ = push "case " in
      let _ = emit_expr ctx scrutinee in
      let _ = push " of " in
      let emit_branch ctx (pattern, guard, expr) =

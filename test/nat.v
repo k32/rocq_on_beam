@@ -1,4 +1,4 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 (* nat lowers to native integers: constructor literals fold (S-chains
    become one integer), matches become guarded clauses, and the values
@@ -14,4 +14,4 @@ Definition predn (n : nat) : nat :=
 
 Definition three : nat := S (S (S O)).
 
-CoreErlang Extraction "test_core/nat" big predn three.
+CoreErlang Extraction "nat" big predn three.

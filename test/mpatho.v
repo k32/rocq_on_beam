@@ -1,7 +1,7 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 From Stdlib Require Import List ZArith Arith.
-Require Import Erlang.
+Require Import Erlang.Runtime.
 Import ListNotations.
 
 (* Pathological map cases. Every oracle is computed by the kernel
@@ -94,4 +94,4 @@ Definition mpartial_result : nat :=
   Eval vm_compute in
     HMap.fold nat (fun _ v acc => v + acc) 0 (mpartial (mbuild 5)).
 
-CoreErlang Extraction "test_core/mpatho" mput3 mremove mnest mbuild mbig mchain msumkeys mshare mpartial mput3_result mremove_result mremove_absent_result mnest_22_result mnest_33_result mbig_result mchain_result msumkeys_result mshare_result mpartial_result.
+CoreErlang Extraction "mpatho" mput3 mremove mnest mbuild mbig mchain msumkeys mshare mpartial mput3_result mremove_result mremove_absent_result mnest_22_result mnest_33_result mbig_result mchain_result msumkeys_result mshare_result mpartial_result.

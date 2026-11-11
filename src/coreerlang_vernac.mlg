@@ -7,7 +7,7 @@ open Libnames
 let global = Procq.Constr.global
 }
 
-DECLARE PLUGIN "coreerlang_plugin"
+DECLARE PLUGIN "rocq-core-erlang"
 
 {
 open Pp

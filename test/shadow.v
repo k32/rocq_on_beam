@@ -1,4 +1,4 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 (* Repeated shadowing of the same Gallina name by let-binders, lambda
    binders and fix parameters, including inside nested functions. *)
@@ -23,4 +23,4 @@ Definition shadowfix (x : nat) : nat :=
 Compute shadowlet 3.
 Compute shadowfix 5.
 
-CoreErlang Extraction "test_core/shadow" shadowlet shadowfix.
+CoreErlang Extraction "shadow" shadowlet shadowfix.

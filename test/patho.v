@@ -1,7 +1,7 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 From Stdlib Require Import List ZArith Arith.
-Require Import Erlang.
+Require Import Erlang.Runtime.
 Import ListNotations.
 
 (* A shadowing chain: lets, lambdas and function arguments all reusing
@@ -97,4 +97,4 @@ Definition pipeline (n : nat) : nat :=
 
 Definition pipeline_result : nat := Eval vm_compute in pipeline 5.
 
-CoreErlang Extraction "test_core/patho" shadows shadows_result meven meven_result church church_result deepmatch deepmatch_result fixnest fixnest_result zfact zfact_result selfapp selfapp_result pipeline pipeline_result.
+CoreErlang Extraction "patho" shadows shadows_result meven meven_result church church_result deepmatch deepmatch_result fixnest fixnest_result zfact zfact_result selfapp selfapp_result pipeline pipeline_result.

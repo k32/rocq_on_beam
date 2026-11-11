@@ -1,4 +1,4 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 (* Nested, non-recursive function definitions: let-bound lambdas
    referring to outer let-bound lambdas. *)
@@ -27,4 +27,4 @@ Definition deep (n : nat) : nat :=
 Definition shadow (n : nat) : nat :=
   (fun n => n + nested 0) (n + 1).
 
-CoreErlang Extraction "test_core/nested" nested applied deep shadow.
+CoreErlang Extraction "nested" nested applied deep shadow.

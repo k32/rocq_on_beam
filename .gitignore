@@ -1,5 +1,6 @@
 _build/
 test_core/
+!test_core/.gitignore
 *.core
 *.beam
 *.vo

@@ -1,0 +1,6 @@
+(rocq.theory
+ (name Erlang)
+ (package rocq-core-erlang)
+ (synopsis "Definitions isomorphic to the Erlang runtime functions")
+ (theories Stdlib LibTx.Storage)
+ (modules :standard))

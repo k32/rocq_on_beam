@@ -1,6 +1,6 @@
 From Stdlib Require Import ZArith.
 
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 Open Scope Z_scope.
 
@@ -31,6 +31,6 @@ Definition sgn (z : Z) : Z :=
   | Zneg _ => -1
   end.
 
-CoreErlang Extraction "test_core/z" fourtytwo minus7 big
+CoreErlang Extraction "z" fourtytwo minus7 big
   sum prod mx absdiff eq
   half_away ofn ton sgn.

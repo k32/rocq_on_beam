@@ -64,9 +64,9 @@ let global_to_ctor (r : global) : ctor option =
        (match (name, index) with
           | "Z", 1 -> CZ0 | "Z", 2 -> CZpos | "Z", 3 -> CZneg
           | _, 1 -> CxI | _, 2 -> CxO | _ -> CxH)
-     | "t", "ErlangBIF.HMap", 1 -> Some CHMapW (* wrap; empty is unused *)
-     | "MapFindResult", "ErlangTypes", 1 -> Some COk
-     | "MapFindResult", "ErlangTypes", 2 -> Some CError
+     | "t", "Erlang.BIF.HMap", 1 -> Some CHMapW (* wrap; empty is unused *)
+     | "MapFindResult", "Erlang.Types", 1 -> Some COk
+     | "MapFindResult", "Erlang.Types", 2 -> Some CError
      | _ -> None)
   | _ -> None
 
@@ -378,12 +378,12 @@ let global_to_map (r : global) : target option =
   match Id.to_string (Table.label_of_r r),
         ModPath.to_string (Table.modpath_of_r r)
   with
-  | "put", "ErlangBIF.HMap" -> Some (call_drop "maps" "put" 3)
-  | "find", "ErlangBIF.HMap" -> Some (call_drop "maps" "find" 2)
-  | "remove", "ErlangBIF.HMap" -> Some (call_drop "maps" "remove" 2)
-  | "keys", "ErlangBIF.HMap" -> Some (call_drop "maps" "keys" 1)
-  | "fold", "ErlangBIF.HMap" -> Some (call_drop "maps" "fold" 3)
-  | "make", "ErlangBIF.HMap" -> Some (NativeValue (Cerlang.EMap []))
+  | "put", "Erlang.BIF.HMap" -> Some (call_drop "maps" "put" 3)
+  | "find", "Erlang.BIF.HMap" -> Some (call_drop "maps" "find" 2)
+  | "remove", "Erlang.BIF.HMap" -> Some (call_drop "maps" "remove" 2)
+  | "keys", "Erlang.BIF.HMap" -> Some (call_drop "maps" "keys" 1)
+  | "fold", "Erlang.BIF.HMap" -> Some (call_drop "maps" "fold" 3)
+  | "make", "Erlang.BIF.HMap" -> Some (NativeValue (Cerlang.EMap []))
   | _ -> None
 
 (* the combined classification *)
@@ -415,5 +415,5 @@ let is_erlangbif_kn kn =
   match Id.to_string (KerName.label kn),
         ModPath.to_string (KerName.modpath kn)
   with
-  | ("put" | "find" | "remove" | "keys" | "fold" | "make"), "ErlangBIF.HMap" -> true
+  | ("put" | "find" | "remove" | "keys" | "fold" | "make"), "Erlang.BIF.HMap" -> true
   | _ -> false

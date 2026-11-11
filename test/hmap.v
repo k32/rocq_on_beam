@@ -1,7 +1,7 @@
-Declare ML Module "coreerlang_plugin".
+Declare ML Module "rocq-core-erlang".
 
 From Stdlib Require Import Arith List.
-Require Import Erlang.
+Require Import Erlang.Runtime.
 Import ListNotations.
 
 (* HMap through the wrapper: extraction must render maps as
@@ -26,4 +26,4 @@ Definition get_or_zero (k : nat) : nat :=
   | error => 0
   end.
 
-CoreErlang Extraction "test_core/hmap" m1 lookup add sum get_or_zero.
+CoreErlang Extraction "hmap" m1 lookup add sum get_or_zero.

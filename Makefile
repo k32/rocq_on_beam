@@ -2,7 +2,7 @@
 #
 # Conventions:
 #   test/<name>.v        Rocq input; must extract to test_core/<name>, i.e.
-#                        contain  CoreErlang Extraction "test_core/<name>" ...
+#                        contain  CoreErlang Extraction "<name>" ...
 #                        producing test_core/rocq_<name>.core
 #   test/<name>_tests.erl  EUnit suite for module rocq_<name>
 #
