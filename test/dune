@@ -1,9 +1,13 @@
-(rocq.theory
- (name coreerlang_test)
- (theories Stdlib Erlang)
- (plugins rocq-runtime.plugins.extraction rocq-core-erlang)
- (modules :standard))
+(include dune.inc)
+
+(rule
+ (deps (source_tree .))
+ (action
+  (with-stdout-to
+   dune.inc.gen
+   (run ../test.gen/gen.exe))))
 
 (rule
  (alias runtest)
- (action (run ./tests.exe)))
+ (action
+  (diff dune.inc dune.inc.gen)))
