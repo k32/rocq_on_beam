@@ -30,7 +30,7 @@ conf() ->
           }
        ]
    , erlang =>
-       #{ app_paths => ["test/extracted/${app}"]
+       #{ app_paths => ["runtime", "test/extracted/${app}"]
         , sources => ["${src_root}/src/*.erl", "${src_root}/src/*.core"]
         , includes => ["${src_root}/src", anvl_plugin:includes_dir()]
         }
@@ -105,7 +105,10 @@ bases() ->
             [{application, list_to_atom(Base),
               [{description, "Extracted Core Erlang modules"},
                {vsn, "0.1.0"}, {registered, []},
-               {applications, [kernel, stdlib, eunit]}]}]),
+               %% erlang_runtime: the Erlang-side support modules
+               %% (e.g. the gen_server shim) reach the test nodes'
+               %% code path via the application closure
+               {applications, [kernel, stdlib, eunit, erlang_runtime]}]}]),
         changed_write(filename:join(SrcDir, Base ++ ".app.src"),
                       unicode:characters_to_binary(AppSrc)),
         %% the eunit suite of the test (named <base>_suite: the

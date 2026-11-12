@@ -1,0 +1,5 @@
+{application, erlang_runtime,
+ [{description, "Erlang runtime support for extracted code"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications, [kernel, stdlib]}]}.
