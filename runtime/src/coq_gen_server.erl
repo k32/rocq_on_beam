@@ -7,7 +7,7 @@
 %% alongside the user state.
 -module(coq_gen_server).
 
--export([start/2, start_link/2, call/2, call/3, cast/2, stop/1,
+-export([start/2, start_link/2,
          %% OTP gen_server callbacks (external calls need exports)
          init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -17,18 +17,6 @@ start(Mod, Args) ->
 
 start_link(Mod, Args) ->
     gen_server:start_link(?MODULE, {Mod, Args}, []).
-
-call(Server, Req) ->
-    gen_server:call(Server, Req).
-
-call(Server, Req, Timeout) ->
-    gen_server:call(Server, Req, Timeout).
-
-cast(Server, Msg) ->
-    gen_server:cast(Server, Msg).
-
-stop(Server) ->
-    gen_server:stop(Server).
 
 %% --- OTP callbacks ----------------------------------------------------
 
