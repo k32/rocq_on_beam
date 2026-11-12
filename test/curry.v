@@ -1,6 +1,6 @@
 Declare ML Module "rocq-core-erlang".
 
-Require Import List.
+From Stdlib Require Import List.
 Import ListNotations.
 
 (* Currying: n-ary Rocq functions are extracted as uncurried Core

@@ -235,7 +235,7 @@ let translate_constructor (tr : ml_ast -> Cerlang.expr) (r : global)
         | CHMapW -> "HMapW"
         | COk -> "ok"
         | CError -> "error")
-  | None, _ -> assert false
+  | None, _ -> failwith "translate_constructor"
 
 (* Patterns that can be expressed as patterns (lists, pairs, nullary
    integer literals).  Arithmetic constructor patterns (O/S, Z,
@@ -260,7 +260,7 @@ let translate_pattern (sub : ml_pattern -> Cerlang.pattern) (r : global)
   | Some COk, [ p ] -> PTuple [ PAtom (Atom "ok"); sub p ]
   | Some CError, [] -> PAtom (Atom "error")
   | Some _, _ -> PTuple [ PAtom (Atom "coq_bad_cons") ] (* arity mismatch *)
-  | None, _ -> assert false
+  | None, _ -> failwith "unknown native pattern"
 
 (* Pusual: constructor applied to all its (named) arguments; the same
    shapes as [is_native_pattern] *)
@@ -278,7 +278,8 @@ let translate_pattern_usual (r : global) (names : Cerlang.var list) :
   | Some COk, _ -> PTuple (PAtom (Atom "ok") :: List.map (fun w -> PVar w) names)
   | Some CError, [] -> PAtom (Atom "error")
   | Some _, _ -> PTuple [ PAtom (Atom "coq_bad_cons") ]
-  | None, _ -> assert false
+  | None, _ ->
+     failwith "unknown native usual pattern"
 
 (* -------------------------------------------------------------------- *)
 (* Match branches                                                       *)
@@ -343,7 +344,11 @@ let rewrite_branch (v : Cerlang.var) (pat : ml_pattern)
 let translate_branch (v : Cerlang.var) (pat : ml_pattern)
     (name : Cerlang.var option) :
     Cerlang.pattern * Cerlang.expr * (Cerlang.var * Cerlang.expr) list =
-  match rewrite_branch v pat name with Some b -> b | None -> assert false
+  match rewrite_branch v pat name with
+  | Some b ->
+     b
+  | None ->
+     failwith "translate branch"
 
 let is_native_branch (pat : ml_pattern) =
   rewrite_branch (Cerlang.Var 0) pat None <> None
@@ -476,7 +481,8 @@ let render_call t args =
   | NativeCall2 (m, f, syn, false), [ a ] ->
       Cerlang.EApply (Cerlang.CGlobal (m, f), [ a; syn ])
   | NativeIdentity, [ a ] -> a
-  | _ -> assert false
+  | _ ->
+     failwith "unknown native call"
 
 (* is this global one of the ErlangBIF definitions (never emitted as
    fundefs)? -- exactly the map family above *)

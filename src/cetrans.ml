@@ -166,11 +166,10 @@ let rec trans_args ctx drop args =
   if drop = 0 then List.map (trans_expr ctx) args
   else
     match args with
-    | _ :: t -> trans_args ctx (drop - 1) t
+    | _ :: t ->
+       trans_args ctx (drop - 1) t
     | [] ->
-        (* [drop] exceeds the argument list: an arity bookkeeping bug
-             in the native-call tables *)
-        assert false
+        failwith "[drop] exceeds the argument list: an arity bookkeeping bug in the native-call tables"
 
 and take k l =
   if k = 0 then [] else match l with x :: t -> x :: take (k - 1) t | [] -> []
@@ -239,7 +238,9 @@ and render_remote ctx r t args =
           Pp.(
             str
               "CoreErlang extraction: a fixed native value applied to arguments")
-  | _ -> assert false
+  | _ ->
+     failwith "render_remote: unknown remote call"
+
 
 (* Application [MLapp (f, [a1;...;an])]: flatten the spine, then
    dispatch on the head *)
@@ -275,7 +276,8 @@ and trans_apply ctx a =
           apply_callee ctx what
             (fun a -> EApply (CGlobal (m, f), a))
             arity 0 args
-      | Some (Local_var _, _, _) -> assert false
+      | Some (Local_var _, _, _) ->
+         failwith "remote call: apply to a local var"
       | None ->
           (* unknown global: a plain remote call *)
           EApply
@@ -323,13 +325,16 @@ and trans_global ctx r =
         ( vars,
           Cerlang.EApply
             (Cerlang.CGlobal (m, f), List.map (fun w -> Cerlang.EVar w) vars) )
-  | Some (Local_var _, _, _) -> assert false
-  | Some (Remote Cenative.NotNative, _, _) -> assert false
+  | Some (Local_var _, _, _) ->
+     failwith "trans_global: apply to local var"
+  | Some (Remote Cenative.NotNative, _, _) ->
+     failwith "trans_global: apply to NotNative"
   | None -> (
       (* not one of ours and not native: extraction should have pulled
        every dependency in, so this is an error *)
       match Cenative.call_arity r with
-      | Some _ -> assert false (* impossible: it would be a NativeCall *)
+      | Some _ ->
+         failwith "trans_global: impossible, it would be a NativeCall"
       | None ->
           CErrors.user_err
             Pp.(
@@ -545,7 +550,11 @@ and trans_fix ctx i ids defs =
       (Array.to_list defs)
   in
   let sel =
-    match List.nth_opt fresh i with Some s -> s | None -> assert false
+    match List.nth_opt fresh i with
+    | Some s ->
+       s
+    | None ->
+       failwith "trans_fix: argument overflow"
   in
   Cerlang.ELetrec (bindings, Cerlang.EFunRef (fst sel, snd sel))
 

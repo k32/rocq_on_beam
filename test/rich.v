@@ -1,6 +1,6 @@
 Declare ML Module "rocq-core-erlang".
 
-Require Import List.
+From Stdlib Require Import List.
 
 Fixpoint len (l : list nat) : nat :=
   match l with

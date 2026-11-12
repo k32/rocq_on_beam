@@ -2,106 +2,128 @@ Declare ML Module "rocq-core-erlang".
 
 From Erlang Require Import GenServer.
 
-(* Two different gen_servers: a counter and a toggle. Each is a module
+(* Two different gen_servers: a counter and a LIFO. Each is a module
    ascribing to the gen_server module type; separate extraction emits
    each as its own dotted Erlang module ('gen_server.Counter',
-   'gen_server.Toggle'). Each test is a separate OTP application
+   'gen_server.LIFO'). Each test is a separate OTP application
    running on its own node, so shared dependency modules of different
    tests never meet. *)
 
 Module Counter <: gen_server.
-  Definition InitArg := nat.
+  Inductive ccall := get | add (n : nat).
 
-  Definition ExitReason := bool.
+  Inductive ccast := inc | dec.
 
-  Definition State := nat.
+  Inductive cinfo := reset (n : nat).
 
-  Inductive cast := inc | dec.
+  Definition t :=
+    {| init_arg_t := nat;
+       state_t := nat;
+       exit_reason_t := bool;
+       call_t := ccall;
+       cast_t := ccast;
+       info_t := cinfo;
+       reply_t _ := nat;
+    |}.
 
-  Definition Cast := cast.
+  Definition init (i : @init_arg_t t) : @init_res t :=
+    @i_ok t i.
 
-  Inductive ccall := cget | cadd (n : nat).
-
-  Definition Call := ccall.
-
-  Definition Reply := nat.
-
-  (* the From handle is only passed through *)
-  Definition From := nat.
-
-  Inductive cinfo := creset (n : nat).
-
-  Definition Info := cinfo.
-
-  Definition init (n : InitArg) : @init_res State ExitReason := i_ok n.
-
-  Definition handle_cast
-    (c : Cast) (s : State) : @handle_cast_res State ExitReason :=
-    cst_noreply
-      match c with
-      | inc => S s
-      | dec => s - 1
-      end.
-
-  Definition handle_call
-    (c : Call) (f : From) (s : State)
-    : @call_res Reply State ExitReason :=
+  Definition handle_cast (c : @cast_t t) (s : @state_t t) : @handle_cast_res t :=
     match c with
-    | cget => c_reply s s
-    | cadd n => c_reply n (s + n)
+    | inc => @cst_noreply t (S s)
+    | dec => @cst_noreply t (s - 1)
     end.
 
-  Definition handle_info
-    (i : Info) (s : State) : @info_res State ExitReason :=
+  Definition handle_call `{FromT} (call : @call_t t) (_ : from_t) (s : @state_t t) : @call_res t call :=
+    match call with
+    | get => @c_reply t call s s
+    | add n => @c_reply t call n (s + n)
+    end.
+
+  Definition handle_info (i : @info_t t) (s : @state_t t) : @info_res t :=
     match i with
-    | creset n => inf_noreply n
+    | reset n => @inf_noreply t n
     end.
 End Counter.
 
-Module Toggle <: gen_server.
-  Definition InitArg := bool.
+From Stdlib Require Import List.
+Import ListNotations.
 
-  Definition ExitReason := nat.
+Module LIFO <: gen_server.
+  Record State :=
+    { data : list nat;
+      len : nat
+    }.
 
-  Definition State := bool.
+  Inductive Call := pop | get_len | push (n : nat).
 
-  Inductive tcast := flip | noop.
+  Inductive Cast := apush (n : nat) | adrop.
 
-  Definition Cast := tcast.
+  Inductive Info := flush (b : bool).
 
-  Inductive tcall := tfire.
+  Definition reply (c : Call) : Set :=
+    match c with
+    | pop => option nat
+    | get_len => nat
+    | push _ => True
+    end.
 
-  Definition Call := tcall.
+  Definition t :=
+    {| init_arg_t := list nat;
+       state_t := State;
+       exit_reason_t := bool;
+       call_t := Call;
+       cast_t := Cast;
+       info_t := Info;
+       reply_t := reply;
+    |}.
 
-  Definition Reply := bool.
+  Definition init (l : @init_arg_t t) : @init_res t :=
+    @i_ok t {| data := l; len := length l |}.
 
-  Definition From := bool.
+  Definition handle_cast (cast : @cast_t t) (s : @state_t t) : @handle_cast_res t :=
+    let (d, l) := s in
+    match cast with
+    | adrop =>
+        match d with
+        | [] =>
+            @cst_noreply t s
+        | _ :: d =>
+            let s' := {| data := d; len := l - 1 |} in
+            @cst_noreply t s'
+        end
+    | apush n =>
+        let s' := {| data := n :: d; len := l + 1 |} in
+        @cst_noreply t s'
+    end.
 
-  Inductive tinfo := tnoop.
+  Definition handle_call `{FromT} (call : @call_t t) (_ : from_t) (s : @state_t t) : @call_res t call :=
+    let (d, l) := s in
+    match call with
+    | push n =>
+        let s' := {| data := n :: d; len := l + 1 |} in
+        @c_reply t (push n) I s'
+    | get_len =>
+        @c_reply t get_len l s
+    | pop =>
+        match d with
+        | [] =>
+            @c_reply t pop None s
+        | n :: d =>
+            let s' := {| data := d; len := l - 1 |} in
+            @c_reply t pop (Some n) s'
+        end
+    end.
 
-  Definition Info := tinfo.
-
-  Definition init (b : InitArg) : @init_res State ExitReason := i_ok b.
-
-  Definition handle_cast
-    (c : Cast) (s : State) : @handle_cast_res State ExitReason :=
-    cst_noreply
-      match c, s with
-      | flip, true => false
-      | flip, false => true
-      | noop, _ => s
-      end.
-
-  Definition handle_call
-    (c : Call) (f : From) (s : State)
-    : @call_res Reply State ExitReason :=
-    c_noreply s.
-
-  Definition handle_info
-    (i : Info) (s : State) : @info_res State ExitReason :=
-    inf_noreply s.
-End Toggle.
+  Definition handle_info (i : @info_t t) (s : @state_t t) : @info_res t :=
+    match i with
+    | flush _ =>
+        let s' := {| data := []; len := 0 |} in
+        @inf_noreply t s'
+    end.
+End LIFO.
 
 CoreErlang Separate Extraction
   Counter.init Counter.handle_cast Counter.handle_call Counter.handle_info
-  Toggle.init Toggle.handle_cast.
+  LIFO.init LIFO.handle_cast LIFO.handle_call LIFO.handle_info.
