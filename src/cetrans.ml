@@ -48,9 +48,9 @@ let global_name (r : global) : atom =
 
 (* Erasure markers, also atoms: kept distinctive with a coq_ prefix
    since they may collide with user constructor names otherwise *)
-let marker_exn = Cerlang.Atom "coq_exn"
-let marker_dummy = Cerlang.Atom "coq_dummy"
-let marker_axiom = Cerlang.Atom "coq_axiom"
+let marker_exn = Cerlang.Atom "$rocq_exn"
+let marker_dummy = Cerlang.Atom "$rocq_dummy"
+let marker_axiom = Cerlang.Atom "$rocq_axiom"
 
 (* The Core Erlang backend bypasses Rocq's custom-extraction machinery
    (its slots hold target-language source strings, which we would have
