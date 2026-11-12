@@ -56,9 +56,14 @@ Module LIFO <: gen_server.
       len : nat
     }.
 
-  Inductive Call := pop | get_len | push (n : nat).
+  Inductive Call :=
+  | pop
+  | get_len
+  | push (n : nat).
 
-  Inductive Cast := apush (n : nat) | adrop.
+  Inductive Cast :=
+  | apush (n : nat)
+  | adrop.
 
   Inductive Info := flush (b : bool).
 
@@ -123,6 +128,69 @@ Module LIFO <: gen_server.
         @inf_noreply t s'
     end.
 End LIFO.
+
+From Stdlib Require Import Lia.
+
+Module LIFO_state_invariant : gen_server_invariant LIFO.
+  Definition prop (s : @state_t LIFO.t) :=
+    let (d, l) := s in
+    length d = l.
+
+  Lemma init_valid arg :
+    match LIFO.init arg  with
+    | i_ok s => prop s
+    | _ => True
+    end.
+  Proof.
+    easy.
+  Qed.
+
+  Lemma handle_cast_valid s cast :
+      prop s ->
+      match LIFO.handle_cast cast s with
+      | cst_noreply s' => prop s'
+      | cst_stop _ s' => prop s'
+      end.
+  Proof.
+    unfold prop, LIFO.handle_cast. intros H.
+    destruct s as [d l].
+    destruct cast.
+    - rewrite PeanoNat.Nat.add_1_r.
+      rewrite length_cons. now rewrite H.
+    - destruct d.
+      + easy.
+      + simpl in H. lia.
+  Qed.
+
+  Lemma handle_call_valid : forall `{FromT} s call from,
+      prop s ->
+      match LIFO.handle_call call from s with
+      | c_reply _ _ s' => prop s'
+      | c_stop_reply _ _ _ s' => prop s'
+      end.
+  Proof.
+    unfold prop, LIFO.handle_call. intros from_t FromT s call from H.
+    destruct s as [d l].
+    destruct call.
+    - destruct d.
+      + easy.
+      + simpl in *. lia.
+    - easy.
+    - simpl. lia.
+  Qed.
+
+  Lemma handle_info_valid : forall s inf,
+      prop s ->
+      match LIFO.handle_info inf s with
+      | inf_noreply s' => prop s'
+      | inf_stop _ s' => prop s'
+      end.
+  Proof.
+    unfold prop, LIFO.handle_info. intros s inf H.
+    destruct s as [d l].
+    now destruct inf.
+  Qed.
+End LIFO_state_invariant.
 
 CoreErlang Separate Extraction
   Counter.init Counter.handle_cast Counter.handle_call Counter.handle_info
