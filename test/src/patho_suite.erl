@@ -1,4 +1,4 @@
--module(patho_tests).
+-module(patho_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% Each test compares the extracted function applied at runtime with

@@ -1,4 +1,4 @@
--module(shadow_tests).
+-module(shadow_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% nat lowers to native integers now

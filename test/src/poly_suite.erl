@@ -1,4 +1,4 @@
--module(poly_tests).
+-module(poly_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% nat lowers to native integers now

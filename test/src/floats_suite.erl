@@ -1,4 +1,4 @@
--module(floats_tests).
+-module(floats_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% primitive floats lower to native Erlang float literals

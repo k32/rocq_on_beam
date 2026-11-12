@@ -1,4 +1,4 @@
--module(adder_tests).
+-module(adder_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% nat lowers to native integers

@@ -1,4 +1,4 @@
--module(typeclass_tests).
+-module(typeclass_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% instances are nullary constants of record type; the dictionary

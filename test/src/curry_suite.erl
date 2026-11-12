@@ -1,4 +1,4 @@
--module(curry_tests).
+-module(curry_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% nat lowers to native integers now

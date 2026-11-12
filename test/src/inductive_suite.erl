@@ -1,4 +1,4 @@
--module(inductive_tests).
+-module(inductive_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% nat lowers to native integers now

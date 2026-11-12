@@ -313,7 +313,10 @@ let rewrite_branch (v : Cerlang.var) (pat : ml_pattern)
   in
   let x = EVar v in
   match pat with
-  | Pwild | Prel _ -> no_binder PWild guard_true
+  | Pwild -> no_binder PWild guard_true
+  (* a bare ident pattern: the branch ident is bound to the whole
+     scrutinee value *)
+  | Prel _ -> one_var guard_true (fun _ -> x)
   | (Pcons (r, []) | Pusual r) when is_O r || is_Z0 r ->
       no_binder (PInt Z.zero) guard_true
   | (Pcons (r, []) | Pusual r) when is_xH r -> no_binder (PInt Z.one) guard_true

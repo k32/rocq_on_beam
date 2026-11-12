@@ -1,4 +1,4 @@
--module(nat_tests).
+-module(nat_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% nat lowers to native integers (S-chains fold into one literal)

@@ -1,4 +1,4 @@
--module(rich_tests).
+-module(rich_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% nat lowers to native integers now

@@ -1,4 +1,4 @@
--module(mcurry_tests).
+-module(mcurry_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% curried HMap methods: fold/find/remove partially applied and passed

@@ -1,4 +1,4 @@
--module(gen_server_tests).
+-module(gen_server_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% two gen_servers, each its own dotted Erlang module

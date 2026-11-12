@@ -1,4 +1,4 @@
--module(z_tests).
+-module(z_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% literals fold to integers

@@ -1,4 +1,4 @@
--module(record_tests).
+-module(record_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% nat lowers to native integers now

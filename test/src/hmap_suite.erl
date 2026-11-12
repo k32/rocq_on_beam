@@ -1,4 +1,4 @@
--module(hmap_tests).
+-module(hmap_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% the runtime representation is a native map; methods are isomorphic

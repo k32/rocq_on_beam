@@ -1,4 +1,4 @@
--module(primstring_tests).
+-module(primstring_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% primitive strings lower to native Erlang binaries

@@ -1,4 +1,4 @@
--module(dependent_arg_tests).
+-module(dependent_arg_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% Arg := {'Int', Z} | {'Bool', B}; ret_type is a type-level function

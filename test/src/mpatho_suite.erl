@@ -1,4 +1,4 @@
--module(mpatho_tests).
+-module(mpatho_suite).
 -include_lib("eunit/include/eunit.hrl").
 
 %% Map stress tests: the oracles are kernel-computed (vm_compute)
