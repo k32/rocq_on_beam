@@ -43,7 +43,7 @@ let extract_structure ~opaque_access refs =
   struc
 
 let translate ~modname ?exported struc =
-  Ceprint.string_of_module
+  List.map Ceprint.string_of_module
     (Cemodule.translate_structure ~modname ?exported struc)
 
 let modname_of_qualid qid =
@@ -65,8 +65,9 @@ let coreerlang_extraction ~opaque_access (x, exported) =
         KerName.Set.empty refs
     else KerName.Set.empty
   in
-  Feedback.msg_notice
-    Pp.(str (translate ~modname:(modname_of_qualid x) ~exported struc))
+  (match translate ~modname:(modname_of_qualid x) ~exported struc with
+   | s :: _ -> Feedback.msg_notice Pp.(str s)
+   | [] -> Feedback.msg_notice Pp.(str "Core Erlang extraction: nothing to extract"))
 
 (* Collect (refs, exported kernel names) from a reference list *)
 let refs_and_exported l =
@@ -83,14 +84,28 @@ let refs_and_exported l =
       (refs @ rs, exported'))
     ([], KerName.Set.empty) l
 
-(* Translate first, then write: on error, no (truncated) output file
-   is left *)
-let write_core_file ~modname ~exported ~file struc =
-  let contents = translate ~modname ~exported struc in
+(* Write one rendered module to [file]. Translate first, then write:
+   on error, no (truncated) output file is left *)
+let dump_core_file file contents =
   let oc = open_out file in
   output_string oc contents;
   close_out oc;
   Feedback.msg_info Pp.(str ("Core Erlang extraction written to " ^ file))
+
+(* Write every non-empty module of the structure, one .core file per
+   module, named after the module (erlc requires name and module to
+   match); empty modules (nothing extracted into them) are skipped.
+   [file_of] maps a module name to its output file. *)
+let write_core_modules ~modname ~exported ~file_of struc =
+  let mods = Cemodule.translate_structure ~modname ~exported struc in
+  match List.filter (fun m -> m.Cerlang.mod_funcs <> []) mods with
+  | [] -> Feedback.msg_info Pp.(str "Core Erlang extraction: nothing to extract")
+  | mods ->
+      List.iter
+        (fun m ->
+          let file = file_of m.Cerlang.mod_name in
+          dump_core_file file (Ceprint.string_of_module m))
+        mods
 
 let coreerlang_extraction_file ~opaque_access f l =
   let refs, exported = refs_and_exported l in
@@ -104,11 +119,14 @@ let coreerlang_extraction_file ~opaque_access f l =
   let file =
     (if dir = "." then "" else dir ^ "/") ^ Ceprint.escape_atom base ^ ".core"
   in
-  write_core_file ~modname ~exported ~file struc
+  (* monolithic: exactly one module, named after the requested file *)
+  (match translate ~modname ~exported struc with
+   | contents :: _ -> dump_core_file file contents
+   | [] -> ())
 
-(* Separate extraction: no output-file argument; the module is named
-   after the Rocq module of the (first) extracted reference, and the
-   .core file is written to rocq's cwd. For now the whole extraction
+(* Separate extraction: no output-file argument; each module is named
+   after the Rocq module of the extracted references, and the .core
+   files are written to rocq's cwd. For now the whole extraction
    closure still lands in that one module; per-home-module splitting
    comes with the nested-modules work. *)
 let coreerlang_extraction_separate ~opaque_access l =
@@ -118,8 +136,6 @@ let coreerlang_extraction_separate ~opaque_access l =
     | r :: _ -> Cerlang.Atom (ModPath.to_string (Table.modpath_of_r r))
     | [] -> Cerlang.Atom "extracted"
   in
-  let file =
-    (match modname with Cerlang.Atom n -> Ceprint.escape_atom n) ^ ".core"
-  in
   let struc = extract_structure ~opaque_access refs in
-  write_core_file ~modname ~exported ~file struc
+  let file_of (Cerlang.Atom n) = Ceprint.escape_atom n ^ ".core" in
+  write_core_modules ~modname ~exported ~file_of struc

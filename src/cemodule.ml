@@ -74,14 +74,16 @@ let fundefs_of_decl exported d =
             fd_exported = is_exported rv.(j);
           })
 
-(* Turn a MiniML structure into a Cerlang module:
+(* Turn a MiniML structure into Cerlang modules (one for now; the
+   nested-modules work will grow this into one module per Rocq
+   module, each named by its ModPath):
    1. build the toplevel function map (for call resolution);
    2. translate each declaration's body under its group binders.
    [exported] is the set of kernel names marked [export]; unmarked
    functions are extracted (they may be needed by the exported ones)
    but stay internal, i.e. absent from the module export list. *)
 let translate_structure ~(modname : Cerlang.atom)
-    ?(exported = KerName.Set.empty) struc : Cerlang.module_ =
+    ?(exported = KerName.Set.empty) struc : Cerlang.module_ list =
   let funs = ref KerName.Map.empty in
   let add r arity =
     funs := KerName.Map.add (Table.repr_of_r r) (Cetrans.global_name r, arity) !funs
@@ -154,4 +156,4 @@ let translate_structure ~(modname : Cerlang.atom)
           fun_exported = fd.fd_exported;
         })
   in
-  { Cerlang.mod_name = modname; mod_funcs = funcs }
+  [ { Cerlang.mod_name = modname; mod_funcs = funcs } ]
