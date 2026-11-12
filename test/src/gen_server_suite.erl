@@ -27,22 +27,22 @@ counter_info_test() ->
 lifo_test() ->
     {ok, Pid} = rocq_gen_server:start_link('gen_server.LIFO', [1, 2]),
     try
-        ?assertEqual(2, gen_server:call(Pid, get_len)),
+        ?assertEqual(2, 'gen_server.LIFO':get_len(Pid)),
         Pid ! {flush, false},
         timer:sleep(100),
-        ?assertEqual(0, gen_server:call(Pid, get_len)),
-        ?assertEqual('None', gen_server:call(Pid, pop)),
-        _ = gen_server:call(Pid, {push, 1}),
-        _ = gen_server:cast(Pid, {apush, 2}),
+        ?assertEqual(0, 'gen_server.LIFO':get_len(Pid)),
+        ?assertEqual('None', 'gen_server.LIFO':pop(Pid)),
+        _ = 'gen_server.LIFO':push(Pid, 1),
+        _ = 'gen_server.LIFO':apush(Pid, 2),
         timer:sleep(100),
-        ?assertEqual(2, gen_server:call(Pid, get_len)),
-        ?assertEqual({'Some', 2}, gen_server:call(Pid, pop)),
-        ?assertEqual({'Some', 1}, gen_server:call(Pid, pop)),
-        ?assertEqual('None', gen_server:call(Pid, pop)),
-        _ = gen_server:call(Pid, {push, 1}),
-        _ = gen_server:cast(Pid, adrop),
+        ?assertEqual(2, 'gen_server.LIFO':get_len(Pid)),
+        ?assertEqual({'Some', 2}, 'gen_server.LIFO':pop(Pid)),
+        ?assertEqual({'Some', 1}, 'gen_server.LIFO':pop(Pid)),
+        ?assertEqual('None', 'gen_server.LIFO':pop(Pid)),
+        _ = 'gen_server.LIFO':push(Pid, 1),
+        _ = 'gen_server.LIFO':adrop(Pid),
         timer:sleep(100),
-        ?assertEqual(0, gen_server:call(Pid, get_len))
+        ?assertEqual(0, 'gen_server.LIFO':get_len(Pid))
     after
         ok = gen_server:stop(Pid)
     end.

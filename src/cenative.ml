@@ -458,11 +458,28 @@ let global_to_map (r : global) : target option =
   | "make", "Erlang.BIF.HMap" -> Some (NativeValue (Cerlang.EMap []))
   | _ -> None
 
+let global_to_gen_server (r : global) : target option =
+  match
+    (Id.to_string (Table.label_of_r r), ModPath.to_string (Table.modpath_of_r r))
+  with
+  | "call", "Erlang.GenServer" ->
+     Some (NativeCall (Cerlang.Atom "rocq_gen_server", Cerlang.Atom "call", 3, 1))
+  | "cast", "Erlang.GenServer" ->
+     Some (NativeCall (Cerlang.Atom "rocq_gen_server", Cerlang.Atom "cast", 2, 1))
+  | _ ->
+     None
+
 (* the combined classification *)
 let global_target (r : global) : target =
   match global_to_z r with
   | Some t -> t
-  | None -> ( match global_to_map r with Some t -> t | None -> NotNative)
+  | None ->
+     match global_to_map r with
+     | Some t -> t
+     | None ->
+        match global_to_gen_server r with
+        | Some t -> t
+        | None -> NotNative
 
 (* arity of the native call, if this global is one *)
 let call_arity r =

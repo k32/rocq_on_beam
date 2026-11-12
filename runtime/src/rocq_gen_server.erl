@@ -7,16 +7,27 @@
 %% alongside the user state.
 -module(rocq_gen_server).
 
--export([start/2, start_link/2,
+-export([start/2, start_link/2, call/3, cast/2,
          %% OTP gen_server callbacks (external calls need exports)
          init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 %% Start an extracted gen_server callback module [Mod] with [Args].
 start(Mod, Args) ->
-    gen_server:start(?MODULE, {Mod, Args}, []).
+  gen_server:start(?MODULE, {Mod, Args}, []).
 
 start_link(Mod, Args) ->
-    gen_server:start_link(?MODULE, {Mod, Args}, []).
+  gen_server:start_link(?MODULE, {Mod, Args}, []).
+
+call(ServerRef, Call, Timeout0) ->
+  case Timeout0 of
+    {timeout, Timeout} -> ok;
+    Timeout = infinity -> ok
+  end,
+  gen_server:call(ServerRef, Call, Timeout).
+
+cast(ServerRef, Cast) ->
+  gen_server:cast(ServerRef, Cast),
+  true.
 
 %% --- OTP callbacks ----------------------------------------------------
 

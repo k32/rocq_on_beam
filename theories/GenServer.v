@@ -1,6 +1,8 @@
+(* Opaque type for handle_call From parameter *)
 Class FromT {from_t : Set} :=
   {}.
 
+(* Type signature of the gen server *)
 Class GenServerT :=
   { init_arg_t : Set;
     state_t : Set;
@@ -41,6 +43,24 @@ Module Type gen_server.
 
   Parameter handle_info : @info_t t -> @state_t t -> @info_res t.
 End gen_server.
+
+Inductive timeout_t : Set := timeout (n : nat) | infinity.
+
+(* This weird type serves two purposes:
+   1. False makes it impossible to construct in Rocq,
+      since gen_server implementation doesn't exist in its universe (yet)
+   2. nat prevents parameter from being optimized out
+ *)
+Definition ServerRef := (nat * False)%type.
+
+(* Placeholder shims for cenative translation. *)
+Definition call `{GenServerT} (server : ServerRef) (call : call_t) (timeout : timeout_t) : reply_t call :=
+  match snd server with
+  end.
+
+Definition cast `{GenServerT} (server : ServerRef) (cast : cast_t) : bool :=
+  match snd server with
+  end.
 
 Section invariant_helpers.
   Context `{GS : GenServerT} (prop : state_t -> Prop).

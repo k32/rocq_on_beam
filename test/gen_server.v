@@ -58,21 +58,21 @@ Module LIFO <: gen_server.
     }.
 
   Inductive Call :=
-  | pop
-  | get_len
-  | push (n : nat).
+  | c_pop
+  | c_get_len
+  | c_push (n : nat).
 
   Inductive Cast :=
-  | apush (n : nat)
-  | adrop.
+  | c_apush (n : nat)
+  | c_adrop.
 
   Inductive Info := flush (b : bool).
 
   Definition reply (c : Call) : Set :=
     match c with
-    | pop => option nat
-    | get_len => nat
-    | push _ => True
+    | c_pop => option nat
+    | c_get_len => nat
+    | c_push _ => nat
     end.
 
   Definition t :=
@@ -91,7 +91,7 @@ Module LIFO <: gen_server.
   Definition handle_cast (cast : @cast_t t) (s : @state_t t) : @handle_cast_res t :=
     let (d, l) := s in
     match cast with
-    | adrop =>
+    | c_adrop =>
         match d with
         | [] =>
             @cst_noreply t s
@@ -99,7 +99,7 @@ Module LIFO <: gen_server.
             let s' := {| data := d; len := l - 1 |} in
             @cst_noreply t s'
         end
-    | apush n =>
+    | c_apush n =>
         let s' := {| data := n :: d; len := l + 1 |} in
         @cst_noreply t s'
     end.
@@ -107,18 +107,18 @@ Module LIFO <: gen_server.
   Definition handle_call `{FromT} (call : @call_t t) (_ : from_t) (s : @state_t t) : @call_res t call :=
     let (d, l) := s in
     match call with
-    | push n =>
+    | c_push n =>
         let s' := {| data := n :: d; len := l + 1 |} in
-        @c_reply t (push n) I s'
-    | get_len =>
-        @c_reply t get_len l s
-    | pop =>
+        @c_reply t (c_push n) (l + 1) s'
+    | c_get_len =>
+        @c_reply t c_get_len l s
+    | c_pop =>
         match d with
         | [] =>
-            @c_reply t pop None s
+            @c_reply t c_pop None s
         | n :: d =>
             let s' := {| data := d; len := l - 1 |} in
-            @c_reply t pop (Some n) s'
+            @c_reply t c_pop (Some n) s'
         end
     end.
 
@@ -128,6 +128,21 @@ Module LIFO <: gen_server.
         let s' := {| data := []; len := 0 |} in
         @inf_noreply t s'
     end.
+
+  Definition push (server : ServerRef) (n : nat) : nat :=
+    @call t server (c_push n) infinity.
+
+  Definition pop (server : ServerRef) : option nat :=
+    @call t server c_pop infinity.
+
+  Definition get_len (server : ServerRef) : nat :=
+    @call t server c_get_len infinity.
+
+  Definition apush (server : ServerRef) (n : nat) : bool :=
+    @cast t server (c_apush n).
+
+  Definition adrop (server : ServerRef) : bool :=
+    @cast t server c_adrop.
 End LIFO.
 
 From Stdlib Require Import Lia.
@@ -175,4 +190,5 @@ End LIFO_state_invariant.
 
 CoreErlang Separate Extraction
   Counter.init Counter.handle_cast Counter.handle_call Counter.handle_info
-  LIFO.init LIFO.handle_cast LIFO.handle_call LIFO.handle_info.
+  LIFO.init LIFO.handle_cast LIFO.handle_call LIFO.handle_info
+  LIFO.push LIFO.pop LIFO.get_len LIFO.apush LIFO.adrop.
