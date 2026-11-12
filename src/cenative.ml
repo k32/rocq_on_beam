@@ -1,24 +1,24 @@
 open Names
 module Table = Extraction_plugin.Table
 (*-----------------------------------------------------------------------*)
-(*  Native type lowering.                                                 *)
+(*  Native type lowering.                                                *)
 (*                                                                       *)
 (*  Some Rocq datatypes map onto native Erlang terms: lists, pairs,      *)
 (*  integers (nat, Z), binaries (primitive strings). This module owns    *)
-(*  everything about that mapping:                                        *)
+(*  everything about that mapping:                                       *)
 (*    - the registry of the constructors involved (by GlobRef),          *)
-(*    - literal folding,                                                  *)
+(*    - literal folding,                                                 *)
 (*    - the wholesale rewrite of Z library operations to BIFs,           *)
 (*    - constructor / pattern / match-branch translation for the         *)
-(*      lowered types.                                                    *)
+(*      lowered types.                                                   *)
 (*                                                                       *)
 (*  The mapping is fixed (Erlang has no user-definable types), so it is  *)
 (*  hardwired here instead of reusing [Extract Inductive]-style          *)
-(*  configuration.                                                        *)
+(*  configuration.                                                       *)
 (*                                                                       *)
 (*  [cetrans] queries this module ([is_*] predicates, [constructor],     *)
 (*  [pattern], [rewrite_branch], [zop_of]) and passes control; it never  *)
-(*  decides native translations itself.                                   *)
+(*  decides native translations itself.                                  *)
 (*-----------------------------------------------------------------------*)
 
 module Miniml = Extraction_plugin.Miniml
@@ -26,10 +26,10 @@ open Miniml
 
 (* -------------------------------------------------------------------- *)
 (* Constructor classification, by plain pattern matching on the         *)
-(* (label, module path); no lists, no searching, no name resolution.     *)
-(*                                                                       *)
+(* (label, module path); no lists, no searching, no name resolution.    *)
+(*                                                                      *)
 (* NB: match on (label, module path) strings, not on GlobRefs:          *)
-(* constructors of one inductive share a KerName, so [Table.repr_of_r] *)
+(* constructors of one inductive share a KerName, so [Table.repr_of_r]  *)
 (* is not constructor-specific (O and S would be indistinguishable).    *)
 (* -------------------------------------------------------------------- *)
 
@@ -108,9 +108,6 @@ let global_to_ctor (r : global) : ctor option =
       | _ -> None)
   | _ -> None
 
-let is_nil r = match global_to_ctor r with Some CNil -> true | _ -> false
-let is_cons r = match global_to_ctor r with Some CCons -> true | _ -> false
-let is_pair r = match global_to_ctor r with Some CPair -> true | _ -> false
 let is_O r = match global_to_ctor r with Some CO -> true | _ -> false
 let is_S r = match global_to_ctor r with Some CS -> true | _ -> false
 let is_Z0 r = match global_to_ctor r with Some CZ0 -> true | _ -> false
@@ -119,12 +116,9 @@ let is_Zneg r = match global_to_ctor r with Some CZneg -> true | _ -> false
 let is_xH r = match global_to_ctor r with Some CxH -> true | _ -> false
 let is_xO r = match global_to_ctor r with Some CxO -> true | _ -> false
 let is_xI r = match global_to_ctor r with Some CxI -> true | _ -> false
-let is_hmapw r = match global_to_ctor r with Some CHMapW -> true | _ -> false
-let is_ok r = match global_to_ctor r with Some COk -> true | _ -> false
-let is_error r = match global_to_ctor r with Some CError -> true | _ -> false
 
 (* -------------------------------------------------------------------- *)
-(* Helpers shared by the lowering rules                                  *)
+(* Helpers shared by the lowering rules                                 *)
 (* -------------------------------------------------------------------- *)
 
 let erlang_call f args =
@@ -133,7 +127,7 @@ let erlang_call f args =
 let guard_true = Cerlang.EAtom (Cerlang.Atom "true")
 
 (* -------------------------------------------------------------------- *)
-(* Literal folding                                                       *)
+(* Literal folding                                                      *)
 (* -------------------------------------------------------------------- *)
 
 (* literal folding cap for nat S-chains: beyond this, unfold into
@@ -163,7 +157,7 @@ let z_literal = function
   | _ -> None
 
 (* -------------------------------------------------------------------- *)
-(* Constructors and patterns                                             *)
+(* Constructors and patterns                                            *)
 (* -------------------------------------------------------------------- *)
 
 let is_native_constructor (r : global) = global_to_ctor r <> None
@@ -287,7 +281,7 @@ let translate_pattern_usual (r : global) (names : Cerlang.var list) :
   | None, _ -> assert false
 
 (* -------------------------------------------------------------------- *)
-(* Match branches                                                        *)
+(* Match branches                                                       *)
 (* -------------------------------------------------------------------- *)
 
 (* Rewrite one match branch for the natively lowered arithmetic
@@ -371,15 +365,15 @@ let is_native_branch (pat : ml_pattern) =
 (* -------------------------------------------------------------------- *)
 
 (* -------------------------------------------------------------------- *)
-(* Remote calls: what a global constant becomes natively.                *)
-(*                                                                       *)
+(* Remote calls: what a global constant becomes natively.               *)
+(*                                                                      *)
 (* Purely a data question: [global_target] maps a global to a native    *)
 (* call target (module, function, arity, number of leading arguments    *)
 (* to drop untranslated -- the EqDec dictionary) or a fixed value.      *)
 (* Currying/eta handling is NOT done here; [cetrans] owns the single    *)
-(* application engine and renders fully-applied calls via              *)
-(* [render_call].                                                        *)
-(*                                                                       *)
+(* application engine and renders fully-applied calls via               *)
+(* [render_call].                                                       *)
+(*                                                                      *)
 (* Z.compare and Nat.eq_dec have no entries (dropped for now); usage    *)
 (* shows up as an unextracted-constant error in the translation.        *)
 (* -------------------------------------------------------------------- *)
@@ -397,7 +391,7 @@ type target =
   | NotNative
 
 (* -------------------------------------------------------------------- *)
-(* Per-family global classification, by plain pattern matching on the  *)
+(* Per-family global classification, by plain pattern matching on the   *)
 (* global's (label, module path); no lists, no searching.               *)
 (* -------------------------------------------------------------------- *)
 
