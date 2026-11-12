@@ -24,10 +24,8 @@ counter_info_test() ->
     ?assertEqual({inf_noreply, 3},
                  'gen_server.Counter':handle_info(3, 9)).
 
-%% the real thing: the extracted Counter behind the OTP gen_server,
-%% via the coq_gen_server shim
 lifo_test() ->
-    {ok, Pid} = coq_gen_server:start_link('gen_server.LIFO', [1, 2]),
+    {ok, Pid} = rocq_gen_server:start_link('gen_server.LIFO', [1, 2]),
     try
         ?assertEqual(2, gen_server:call(Pid, get_len)),
         Pid ! {flush, false},

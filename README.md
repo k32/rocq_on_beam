@@ -120,7 +120,7 @@ for `nat`), `GenServer` (a gen_server module type: `init`/
 `handle_cast`/`handle_call`/`handle_info` with tagged result
 values). `From Erlang Require Import BIF.` brings the native map
 operations in. The Erlang side of the runtime lives in `runtime/`
-(the `erlang_runtime` app): `coq_gen_server` adapts extracted
+(the `erlang_runtime` app): `rocq_gen_server` adapts extracted
 gen_server callbacks to the OTP behaviour, translating the result
 constructors (`'i_ok'` → `{ok, State}`, `'c_reply'` → `{reply,
 Reply, State}`, …) — see `test/gen_server.v` and

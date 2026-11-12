@@ -160,8 +160,6 @@ Module LIFO_state_invariant : gen_server_invariant LIFO.
     now destruct inf.
   Qed.
 
-  Check @handle_call_valid_t.
-
   Lemma handle_call_valid : forall `{HF : FromT}, handle_call_valid_t prop LIFO.handle_call.
   Proof.
     unfold prop, LIFO.handle_call. intros from_t HF call from s.

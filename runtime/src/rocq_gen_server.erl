@@ -5,7 +5,7 @@
 %% ('i_ok', 'c_reply', 'cst_noreply', ...); this module translates
 %% them into the tuples OTP expects, and carries the callback module
 %% alongside the user state.
--module(coq_gen_server).
+-module(rocq_gen_server).
 
 -export([start/2, start_link/2,
          %% OTP gen_server callbacks (external calls need exports)
