@@ -44,7 +44,7 @@ let extract_structure ~opaque_access refs =
 
 let translate ~modname ?exported struc =
   Ceprint.string_of_module
-    (Cetrans.translate_structure ~modname ?exported struc)
+    (Cemodule.translate_structure ~modname ?exported struc)
 
 let modname_of_qualid qid =
   match locate_ref qid with
