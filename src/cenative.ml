@@ -34,42 +34,78 @@ open Miniml
 (* -------------------------------------------------------------------- *)
 
 type ctor =
-  | CNil | CCons | CPair
-  | CO | CS
-  | CZ0 | CZpos | CZneg
-  | CxH | CxO | CxI
+  (* List *)
+  | CNil
+  | CCons
+  (* 2-tuple *)
+  | CPair
+  (* nat *)
+  | CO
+  | CS
+  (* Z *)
+  | CZ0
+  | CZpos
+  | CZneg
+  (* postitive *)
+  | CxH
+  | CxO
+  | CxI
+  (* HMap *)
   | CHMapW
-  | COk | CError
+  (* Map find return *)
+  | COk
+  | CError
 
 let global_to_ctor (r : global) : ctor option =
   match r.glob with
-  | GlobRef.ConstructRef ((mind, _), index) ->
-    (* constructors of one inductive share label and kernel name; the
+  | GlobRef.ConstructRef ((mind, _), index) -> (
+      (* constructors of one inductive share label and kernel name; the
        constructor index (1-based) tells them apart *)
-    let ind =
-      { glob = GlobRef.IndRef (mind, 0); inst = InfvInst.empty }
-    in
-    let name = Id.to_string (Table.label_of_r ind) in
-    let m = ModPath.to_string (Table.modpath_of_r ind) in
-    (match (name, m, index) with
-     | "list", ("Corelib.Init.Datatypes" | "Stdlib.Datatypes" | "Coq.Datatypes"), 1 -> Some CNil
-     | "list", ("Corelib.Init.Datatypes" | "Stdlib.Datatypes" | "Coq.Datatypes"), 2 -> Some CCons
-     | "prod", ("Corelib.Init.Datatypes" | "Stdlib.Datatypes" | "Coq.Datatypes"), 1 -> Some CPair
-     | "nat", ("Corelib.Init.Datatypes" | "Stdlib.Init.Datatypes" | "Coq.Init.Datatypes"), 1 -> Some CO
-     | "nat", ("Corelib.Init.Datatypes" | "Stdlib.Init.Datatypes" | "Coq.Init.Datatypes"), 2 -> Some CS
-     | ("Z" | "positive"),
-       ("Corelib.Numbers.BinNums" | "Stdlib.Numbers.BinNums"
-       | "Coq.Numbers.BinNums"), _ -> (* aliases, as the datatypes above *)
-       Some
-         (* constructor order in BinNums: Z: Z0, Zpos, Zneg;
+      let ind = { glob = GlobRef.IndRef (mind, 0); inst = InfvInst.empty } in
+      let name = Id.to_string (Table.label_of_r ind) in
+      let m = ModPath.to_string (Table.modpath_of_r ind) in
+      match (name, m, index) with
+      | ( "list",
+          ("Corelib.Init.Datatypes" | "Stdlib.Datatypes" | "Coq.Datatypes"),
+          1 ) ->
+          Some CNil
+      | ( "list",
+          ("Corelib.Init.Datatypes" | "Stdlib.Datatypes" | "Coq.Datatypes"),
+          2 ) ->
+          Some CCons
+      | ( "prod",
+          ("Corelib.Init.Datatypes" | "Stdlib.Datatypes" | "Coq.Datatypes"),
+          1 ) ->
+          Some CPair
+      | ( "nat",
+          ( "Corelib.Init.Datatypes" | "Stdlib.Init.Datatypes"
+          | "Coq.Init.Datatypes" ),
+          1 ) ->
+          Some CO
+      | ( "nat",
+          ( "Corelib.Init.Datatypes" | "Stdlib.Init.Datatypes"
+          | "Coq.Init.Datatypes" ),
+          2 ) ->
+          Some CS
+      | ( ("Z" | "positive"),
+          ( "Corelib.Numbers.BinNums" | "Stdlib.Numbers.BinNums"
+          | "Coq.Numbers.BinNums" ),
+          _ ) ->
+          (* aliases, as the datatypes above *)
+          Some
+            (* constructor order in BinNums: Z: Z0, Zpos, Zneg;
           positive: xI, xO, xH *)
-       (match (name, index) with
-          | "Z", 1 -> CZ0 | "Z", 2 -> CZpos | "Z", 3 -> CZneg
-          | _, 1 -> CxI | _, 2 -> CxO | _ -> CxH)
-     | "t", "Erlang.BIF.HMap", 1 -> Some CHMapW (* wrap; empty is unused *)
-     | "MapFindResult", "Erlang.Types", 1 -> Some COk
-     | "MapFindResult", "Erlang.Types", 2 -> Some CError
-     | _ -> None)
+            (match (name, index) with
+            | "Z", 1 -> CZ0
+            | "Z", 2 -> CZpos
+            | "Z", 3 -> CZneg
+            | _, 1 -> CxI
+            | _, 2 -> CxO
+            | _ -> CxH)
+      | "t", "Erlang.BIF.HMap", 1 -> Some CHMapW (* wrap; empty is unused *)
+      | "MapFindResult", "Erlang.Types", 1 -> Some COk
+      | "MapFindResult", "Erlang.Types", 2 -> Some CError
+      | _ -> None)
   | _ -> None
 
 let is_nil r = match global_to_ctor r with Some CNil -> true | _ -> false
@@ -180,20 +216,31 @@ let translate_constructor (tr : ml_ast -> Cerlang.expr) (r : global)
       match pos_literal (MLcons (Tunknown, r, [ t ])) with
       | Some n -> EInt n
       | _ ->
-          erlang_call "+" [ erlang_call "*" [ tr t; EInt (Z.of_int 2) ]; EInt Z.one ])
+          erlang_call "+"
+            [ erlang_call "*" [ tr t; EInt (Z.of_int 2) ]; EInt Z.one ])
   | Some CHMapW, [ l ] ->
       Cerlang.EApply
-        (Cerlang.CGlobal (Cerlang.Atom "maps", Cerlang.Atom "from_list"),
-         [ tr l ])
+        ( Cerlang.CGlobal (Cerlang.Atom "maps", Cerlang.Atom "from_list"),
+          [ tr l ] )
   | Some COk, [ v ] -> ETuple [ EAtom (Atom "ok"); tr v ]
   | Some CError, [] -> EAtom (Atom "error")
-  | Some c, _ -> bad
+  | Some c, _ ->
+      bad
         (match c with
-        | CNil -> "nil" | CCons -> "cons" | CPair -> "pair"
-        | CO -> "O" | CS -> "S"
-        | CZ0 -> "Z0" | CZpos -> "Zpos" | CZneg -> "Zneg"
-        | CxH -> "xH" | CxO -> "xO" | CxI -> "xI"
-        | CHMapW -> "HMapW" | COk -> "ok" | CError -> "error")
+        | CNil -> "nil"
+        | CCons -> "cons"
+        | CPair -> "pair"
+        | CO -> "O"
+        | CS -> "S"
+        | CZ0 -> "Z0"
+        | CZpos -> "Zpos"
+        | CZneg -> "Zneg"
+        | CxH -> "xH"
+        | CxO -> "xO"
+        | CxI -> "xI"
+        | CHMapW -> "HMapW"
+        | COk -> "ok"
+        | CError -> "error")
   | None, _ -> assert false
 
 (* Patterns that can be expressed as patterns (lists, pairs, nullary
@@ -234,8 +281,7 @@ let translate_pattern_usual (r : global) (names : Cerlang.var list) :
   | Some CPair, _ -> PTuple (List.map (fun v -> PVar v) names)
   | Some (CO | CZ0), _ -> PInt Z.zero
   | Some CxH, _ -> PInt Z.one
-  | Some COk, _ ->
-      PTuple (PAtom (Atom "ok") :: List.map (fun w -> PVar w) names)
+  | Some COk, _ -> PTuple (PAtom (Atom "ok") :: List.map (fun w -> PVar w) names)
   | Some CError, [] -> PAtom (Atom "error")
   | Some _, _ -> PTuple [ PAtom (Atom "coq_bad_cons") ]
   | None, _ -> assert false
@@ -270,9 +316,8 @@ let rewrite_branch (v : Cerlang.var) (pat : ml_pattern)
   | Pwild | Prel _ -> no_binder PWild guard_true
   | (Pcons (r, []) | Pusual r) when is_O r || is_Z0 r ->
       no_binder (PInt Z.zero) guard_true
-  | (Pcons (r, []) | Pusual r) when is_xH r ->
-      no_binder (PInt Z.one) guard_true
-  | (Pcons (r, [ Pwild ]) | Pcons (r, [ Prel 1 ]) | Pusual r) -> (
+  | (Pcons (r, []) | Pusual r) when is_xH r -> no_binder (PInt Z.one) guard_true
+  | Pcons (r, [ Pwild ]) | Pcons (r, [ Prel 1 ]) | Pusual r -> (
       match global_to_ctor r with
       | Some CS ->
           one_var
@@ -285,11 +330,13 @@ let rewrite_branch (v : Cerlang.var) (pat : ml_pattern)
             (fun _ -> erlang_call "-" [ EInt Z.zero; x ])
       | Some CxO ->
           one_var
-            (erlang_call "=:=" [ erlang_call "band" [ x; EInt Z.one ]; EInt Z.zero ])
+            (erlang_call "=:="
+               [ erlang_call "band" [ x; EInt Z.one ]; EInt Z.zero ])
             (fun _ -> erlang_call "bsr" [ x; EInt Z.one ])
       | Some CxI ->
           one_var
-            (erlang_call "=:=" [ erlang_call "band" [ x; EInt Z.one ]; EInt Z.one ])
+            (erlang_call "=:="
+               [ erlang_call "band" [ x; EInt Z.one ]; EInt Z.one ])
             (fun _ -> erlang_call "bsr" [ x; EInt Z.one ])
       | _ -> None)
   | _ -> None
@@ -342,8 +389,8 @@ type target =
        function, the synthetic operand, and whether it comes first
        (f(syn, x), e.g. Z.opp -> 0 - X) or last (f(x, syn), e.g.
        Z.succ -> X + 1) *)
-  | NativeIdentity  (* the identity: the argument itself (e.g. Z.of_nat) *)
-  | NativeValue of Cerlang.expr  (* a fixed value *)
+  | NativeIdentity (* the identity: the argument itself (e.g. Z.of_nat) *)
+  | NativeValue of Cerlang.expr (* a fixed value *)
   | NotNative
 
 (* -------------------------------------------------------------------- *)
@@ -361,26 +408,33 @@ let global_to_z (r : global) : target option =
   let z_mod =
     match m with
     | "Corelib.BinNums.IntDef.Z" | "Stdlib.ZArith.BinIntDef.Z"
-    | "Stdlib.ZArith.BinInt.Z" -> true
+    | "Stdlib.ZArith.BinInt.Z" ->
+        true
     | _ -> false
   in
   match (l, z_mod) with
   | ("add" | "sub" | "mul"), true ->
-    Some
-      (call "erlang"
-         (match l with "add" -> "+" | "sub" -> "-" | _ -> "*")
-         2)
+      Some
+        (call "erlang"
+           (match l with "add" -> "+" | "sub" -> "-" | _ -> "*")
+           2)
   | ("max" | "min"), true -> Some (call "erlang" l 2)
-  | "succ", true -> Some (NativeCall2 (Cerlang.Atom "erlang", Cerlang.Atom "+", Cerlang.EInt Z.one, false)) (* X + 1 *)
+  | "succ", true ->
+      Some
+        (NativeCall2
+           (Cerlang.Atom "erlang", Cerlang.Atom "+", Cerlang.EInt Z.one, false))
+      (* X + 1 *)
   | ("opp" | "pred"), true ->
-    (* both are unary ML functions but the BIF '-' is binary: supply the
+      (* both are unary ML functions but the BIF '-' is binary: supply the
        missing operand synthetically (opp -> 0 - X, pred -> X - 1) *)
-    Some
-      (NativeCall2
-         ( Cerlang.Atom "erlang",
-           Cerlang.Atom "-",
-           (match l with "opp" -> Cerlang.EInt Z.zero | _ -> Cerlang.EInt Z.one),
-           l = "opp" ))
+      Some
+        (NativeCall2
+           ( Cerlang.Atom "erlang",
+             Cerlang.Atom "-",
+             (match l with
+             | "opp" -> Cerlang.EInt Z.zero
+             | _ -> Cerlang.EInt Z.one),
+             l = "opp" ))
   | "abs", true -> Some (call "erlang" "abs" 1)
   | "eqb", true -> Some (call "erlang" "=:=" 2)
   | "leb", true -> Some (call "erlang" "=<" 2)
@@ -391,8 +445,8 @@ let global_to_z (r : global) : target option =
 (* ErlangBIF.HMap methods -> maps module calls; the EqDec dictionary
    (leading argument) is dropped untranslated *)
 let global_to_map (r : global) : target option =
-  match Id.to_string (Table.label_of_r r),
-        ModPath.to_string (Table.modpath_of_r r)
+  match
+    (Id.to_string (Table.label_of_r r), ModPath.to_string (Table.modpath_of_r r))
   with
   | "put", "Erlang.BIF.HMap" -> Some (call_drop "maps" "put" 3)
   | "find", "Erlang.BIF.HMap" -> Some (call_drop "maps" "find" 2)
@@ -406,7 +460,7 @@ let global_to_map (r : global) : target option =
 let global_target (r : global) : target =
   match global_to_z r with
   | Some t -> t
-  | None -> (match global_to_map r with Some t -> t | None -> NotNative)
+  | None -> ( match global_to_map r with Some t -> t | None -> NotNative)
 
 (* arity of the native call, if this global is one *)
 let call_arity r =
@@ -429,12 +483,12 @@ let render_call t args =
 
 (* is this global one of the ErlangBIF definitions (never emitted as
    fundefs)? -- exactly the map family above *)
-let is_erlangbif r =
-  match global_to_map r with Some _ -> true | None -> false
+let is_erlangbif r = match global_to_map r with Some _ -> true | None -> false
 
 let is_erlangbif_kn kn =
-  match Id.to_string (KerName.label kn),
-        ModPath.to_string (KerName.modpath kn)
+  match
+    (Id.to_string (KerName.label kn), ModPath.to_string (KerName.modpath kn))
   with
-  | ("put" | "find" | "remove" | "keys" | "fold" | "make"), "Erlang.BIF.HMap" -> true
+  | ("put" | "find" | "remove" | "keys" | "fold" | "make"), "Erlang.BIF.HMap" ->
+      true
   | _ -> false

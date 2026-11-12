@@ -39,7 +39,7 @@ type expr =
   | ELet of var * expr * expr (* let x = e1 in e2 *)
   | ELetrec of letrec_binding list * expr (* letrec b1 ... bn in body *)
   | ECase of expr * (pattern * expr * expr) list
-    (* case e of <p> when g -> e ... end;
+(* case e of <p> when g -> e ... end;
        the guard is usually 'true' *)
 
 (* what is being applied: a (remote) global function, an expression

@@ -33,7 +33,8 @@ let locate_ref qid =
 
 let extract_structure ~opaque_access refs =
   let state =
-    Common.State.make ~modular:false ~library:false ~keywords:Id.Set.empty () in
+    Common.State.make ~modular:false ~library:false ~keywords:Id.Set.empty ()
+  in
   let struc =
     Modutil.optimize_struct state (refs, [])
       (Extract_env.mono_environment state ~opaque_access refs [])
@@ -59,24 +60,27 @@ let coreerlang_extraction ~opaque_access (x, exported) =
   let struc = extract_structure ~opaque_access refs in
   let exported =
     if exported then
-      List.fold_left (fun s r -> KerName.Set.add (Table.repr_of_r r) s)
+      List.fold_left
+        (fun s r -> KerName.Set.add (Table.repr_of_r r) s)
         KerName.Set.empty refs
     else KerName.Set.empty
   in
-  Feedback.msg_notice Pp.(str (translate ~modname:(modname_of_qualid x) ~exported struc))
+  Feedback.msg_notice
+    Pp.(str (translate ~modname:(modname_of_qualid x) ~exported struc))
 
 let coreerlang_extraction_file ~opaque_access f l =
   let refs, exported =
     List.fold_left
       (fun (refs, exported) (x, export) ->
-         let rs = locate_ref x in
-         let exported' =
-           if export then
-             List.fold_left (fun acc r -> KerName.Set.add (Table.repr_of_r r) acc)
-               exported rs
-           else exported
-         in
-         (refs @ rs, exported'))
+        let rs = locate_ref x in
+        let exported' =
+          if export then
+            List.fold_left
+              (fun acc r -> KerName.Set.add (Table.repr_of_r r) acc)
+              exported rs
+          else exported
+        in
+        (refs @ rs, exported'))
       ([], KerName.Set.empty) l
   in
   let struc = extract_structure ~opaque_access refs in
@@ -87,8 +91,7 @@ let coreerlang_extraction_file ~opaque_access f l =
   let modname = Cerlang.Atom base in
   let dir = Filename.dirname f in
   let file =
-    (if dir = "." then "" else dir ^ "/")
-    ^ Ceprint.escape_atom base ^ ".core"
+    (if dir = "." then "" else dir ^ "/") ^ Ceprint.escape_atom base ^ ".core"
   in
   (* translate first: on error, no (truncated) output file is left *)
   let contents = translate ~modname ~exported struc in
