@@ -21,8 +21,8 @@ type var = Var of int
 type expr =
   | EVar of var (* a variable *)
   | EFunRef of atom * int (* 'f'/n : a function as a value *)
-  | EInt of string (* integer literal (decimal rep) *)
-  | EFloat of string (* float literal (decimal rep) *)
+  | EInt of Z.t (* integer literal (arbitrary precision) *)
+  | EFloat of float (* float literal (64-bit value) *)
   | EString of string (* string literal (unescaped) *)
   | EAtom of atom (* 'atom' *)
   | ENil (* [] : the empty list *)
@@ -61,7 +61,7 @@ and pattern =
   | PAtom of atom (* 'tag' *)
   | PNil (* [] *)
   | PCons of pattern * pattern (* [P|P] *)
-  | PInt of string (* integer literal, e.g. 0 *)
+  | PInt of Z.t (* integer literal, e.g. 0 *)
   | PTuple of pattern list (* {p1,...,pn} *)
 
 (* One toplevel function definition 'name'/n = fun (params) -> body.

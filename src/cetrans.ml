@@ -516,8 +516,8 @@ and trans_expr ctx a =
   | MLdummy _ -> EAtom marker_dummy
   | MLaxiom s -> ETuple [ EAtom marker_axiom; EString s ]
   | MLmagic a -> trans_expr ctx a
-  | MLuint w -> EInt (Uint63.to_string w)
-  | MLfloat f -> EFloat (Float64.to_string f)
+  | MLuint w -> EInt (Z.of_int64 (Uint63.to_int64 w))
+  | MLfloat f -> EFloat (Float64.to_float f)
   | MLstring s -> EBinary (Pstring.to_string s) (* native: binary *)
   | MLparray (arr, _) ->
       (* arrays do not exist in Core Erlang: degraded to a tuple *)

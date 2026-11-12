@@ -2,19 +2,21 @@
 %% propagating failures.
 -module(rocq_core_erlang_test).
 -export([all/0]).
--export([adder_test/0, curry_test/0, dependent_arg_test/0, hmap_test/0,
-         inductive_test/0, mcurry_test/0, mpatho_test/0, nat_test/0,
-         nested_test/0, patho_test/0, poly_test/0, primstring_test/0,
-         record_test/0, rich_test/0, shadow_test/0, z_test/0]).
+-export([adder_test/0, curry_test/0, dependent_arg_test/0, floats_test/0,
+         hmap_test/0, inductive_test/0, mcurry_test/0, mpatho_test/0,
+         nat_test/0, nested_test/0, patho_test/0, poly_test/0,
+         primstring_test/0, record_test/0, rich_test/0, shadow_test/0,
+         z_test/0]).
 
-all() -> [adder_test, curry_test, dependent_arg_test, hmap_test,
-          inductive_test, mcurry_test, mpatho_test, nat_test, nested_test,
-          patho_test, poly_test, primstring_test, record_test, rich_test,
-          shadow_test, z_test].
+all() -> [adder_test, curry_test, dependent_arg_test, floats_test,
+          hmap_test, inductive_test, mcurry_test, mpatho_test, nat_test,
+          nested_test, patho_test, poly_test, primstring_test,
+          record_test, rich_test, shadow_test, z_test].
 
 adder_test() -> run(adder_tests).
 curry_test() -> run(curry_tests).
 dependent_arg_test() -> run(dependent_arg_tests).
+floats_test() -> run(floats_tests).
 hmap_test() -> run(hmap_tests).
 inductive_test() -> run(inductive_tests).
 mcurry_test() -> run(mcurry_tests).

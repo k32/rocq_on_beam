@@ -156,31 +156,31 @@ let translate_constructor (tr : ml_ast -> Cerlang.expr) (r : global)
   | Some CNil, [] -> ENil
   | Some CCons, [ h; t ] -> ECons (tr h, tr t)
   | Some CPair, _ -> ETuple (List.map tr args)
-  | Some CO, [] -> EInt "0"
+  | Some CO, [] -> EInt Z.zero
   | Some CS, [ t ] -> (
       match nat_literal (MLcons (Tunknown, r, [ t ])) with
-      | Some n when n <= nat_fold_limit -> EInt (string_of_int n)
-      | _ -> erlang_call "+" [ tr t; EInt "1" ])
-  | Some CZ0, [] -> EInt "0"
+      | Some n when n <= nat_fold_limit -> EInt (Z.of_int n)
+      | _ -> erlang_call "+" [ tr t; EInt Z.one ])
+  | Some CZ0, [] -> EInt Z.zero
   | Some CZpos, [ t ] -> (
       (* a positive is lowered to its integer value: Zpos p = p *)
       match z_literal (MLcons (Tunknown, r, [ t ])) with
-      | Some n -> EInt (Z.to_string n)
+      | Some n -> EInt n
       | _ -> tr t)
   | Some CZneg, [ t ] -> (
       match z_literal (MLcons (Tunknown, r, [ t ])) with
-      | Some n -> EInt (Z.to_string n)
-      | _ -> erlang_call "-" [ EInt "0"; tr t ])
-  | Some CxH, [] -> EInt "1"
+      | Some n -> EInt n
+      | _ -> erlang_call "-" [ EInt Z.zero; tr t ])
+  | Some CxH, [] -> EInt Z.one
   | Some CxO, [ t ] -> (
       match pos_literal (MLcons (Tunknown, r, [ t ])) with
-      | Some n -> EInt (Z.to_string n)
-      | _ -> erlang_call "*" [ tr t; EInt "2" ])
+      | Some n -> EInt n
+      | _ -> erlang_call "*" [ tr t; EInt (Z.of_int 2) ])
   | Some CxI, [ t ] -> (
       match pos_literal (MLcons (Tunknown, r, [ t ])) with
-      | Some n -> EInt (Z.to_string n)
+      | Some n -> EInt n
       | _ ->
-          erlang_call "+" [ erlang_call "*" [ tr t; EInt "2" ]; EInt "1" ])
+          erlang_call "+" [ erlang_call "*" [ tr t; EInt (Z.of_int 2) ]; EInt Z.one ])
   | Some CHMapW, [ l ] ->
       Cerlang.EApply
         (Cerlang.CGlobal (Cerlang.Atom "maps", Cerlang.Atom "from_list"),
@@ -214,8 +214,8 @@ let translate_pattern (sub : ml_pattern -> Cerlang.pattern) (r : global)
   | Some CNil, [] -> PNil
   | Some CCons, [ h; t ] -> PCons (sub h, sub t)
   | Some CPair, _ -> PTuple (List.map sub ps)
-  | Some (CO | CZ0), [] -> PInt "0"
-  | Some CxH, [] -> PInt "1"
+  | Some (CO | CZ0), [] -> PInt Z.zero
+  | Some CxH, [] -> PInt Z.one
   | Some COk, [ p ] -> PTuple [ PAtom (Atom "ok"); sub p ]
   | Some CError, [] -> PAtom (Atom "error")
   | Some _, _ -> PTuple [ PAtom (Atom "coq_bad_cons") ] (* arity mismatch *)
@@ -232,8 +232,8 @@ let translate_pattern_usual (r : global) (names : Cerlang.var list) :
   | Some CNil, [] -> PNil
   | Some CCons, [ h; t ] -> PCons (PVar h, PVar t)
   | Some CPair, _ -> PTuple (List.map (fun v -> PVar v) names)
-  | Some (CO | CZ0), _ -> PInt "0"
-  | Some CxH, _ -> PInt "1"
+  | Some (CO | CZ0), _ -> PInt Z.zero
+  | Some CxH, _ -> PInt Z.one
   | Some COk, _ ->
       PTuple (PAtom (Atom "ok") :: List.map (fun w -> PVar w) names)
   | Some CError, [] -> PAtom (Atom "error")
@@ -269,28 +269,28 @@ let rewrite_branch (v : Cerlang.var) (pat : ml_pattern)
   match pat with
   | Pwild | Prel _ -> no_binder PWild guard_true
   | (Pcons (r, []) | Pusual r) when is_O r || is_Z0 r ->
-      no_binder (PInt "0") guard_true
+      no_binder (PInt Z.zero) guard_true
   | (Pcons (r, []) | Pusual r) when is_xH r ->
-      no_binder (PInt "1") guard_true
+      no_binder (PInt Z.one) guard_true
   | (Pcons (r, [ Pwild ]) | Pcons (r, [ Prel 1 ]) | Pusual r) -> (
       match global_to_ctor r with
       | Some CS ->
           one_var
-            (erlang_call ">" [ x; EInt "0" ])
-            (fun _ -> erlang_call "-" [ x; EInt "1" ])
-      | Some CZpos -> one_var (erlang_call ">" [ x; EInt "0" ]) (fun _ -> x)
+            (erlang_call ">" [ x; EInt Z.zero ])
+            (fun _ -> erlang_call "-" [ x; EInt Z.one ])
+      | Some CZpos -> one_var (erlang_call ">" [ x; EInt Z.zero ]) (fun _ -> x)
       | Some CZneg ->
           one_var
-            (erlang_call "<" [ x; EInt "0" ])
-            (fun _ -> erlang_call "-" [ EInt "0"; x ])
+            (erlang_call "<" [ x; EInt Z.zero ])
+            (fun _ -> erlang_call "-" [ EInt Z.zero; x ])
       | Some CxO ->
           one_var
-            (erlang_call "=:=" [ erlang_call "band" [ x; EInt "1" ]; EInt "0" ])
-            (fun _ -> erlang_call "bsr" [ x; EInt "1" ])
+            (erlang_call "=:=" [ erlang_call "band" [ x; EInt Z.one ]; EInt Z.zero ])
+            (fun _ -> erlang_call "bsr" [ x; EInt Z.one ])
       | Some CxI ->
           one_var
-            (erlang_call "=:=" [ erlang_call "band" [ x; EInt "1" ]; EInt "1" ])
-            (fun _ -> erlang_call "bsr" [ x; EInt "1" ])
+            (erlang_call "=:=" [ erlang_call "band" [ x; EInt Z.one ]; EInt Z.one ])
+            (fun _ -> erlang_call "bsr" [ x; EInt Z.one ])
       | _ -> None)
   | _ -> None
 
@@ -371,7 +371,7 @@ let global_to_z (r : global) : target option =
          (match l with "add" -> "+" | "sub" -> "-" | _ -> "*")
          2)
   | ("max" | "min"), true -> Some (call "erlang" l 2)
-  | "succ", true -> Some (NativeCall2 (Cerlang.Atom "erlang", Cerlang.Atom "+", Cerlang.EInt "1", false)) (* X + 1 *)
+  | "succ", true -> Some (NativeCall2 (Cerlang.Atom "erlang", Cerlang.Atom "+", Cerlang.EInt Z.one, false)) (* X + 1 *)
   | ("opp" | "pred"), true ->
     (* both are unary ML functions but the BIF '-' is binary: supply the
        missing operand synthetically (opp -> 0 - X, pred -> X - 1) *)
@@ -379,7 +379,7 @@ let global_to_z (r : global) : target option =
       (NativeCall2
          ( Cerlang.Atom "erlang",
            Cerlang.Atom "-",
-           (match l with "opp" -> Cerlang.EInt "0" | _ -> Cerlang.EInt "1"),
+           (match l with "opp" -> Cerlang.EInt Z.zero | _ -> Cerlang.EInt Z.one),
            l = "opp" ))
   | "abs", true -> Some (call "erlang" "abs" 1)
   | "eqb", true -> Some (call "erlang" "=:=" 2)

@@ -68,10 +68,11 @@ let rec emit_expr ctx e =
      push (unvar v)
   | EFunRef (f, n) ->
      push (string_of_fun_ref f n)
-  | EInt s ->
-     push s
-  | EFloat s ->
-     push s
+  | EInt z ->
+     push (Z.to_string z)
+  | EFloat f ->
+     (* back to the kernel's printer via the exact 64-bit round-trip *)
+     push (Float64.to_string (Float64.of_float f))
   | EString s ->
      push "\"";
      push (String.escaped s);
@@ -173,7 +174,7 @@ and string_of_pattern p =
   | PAtom a -> unatom a
   | PNil -> "[]"
   | PCons (h, t) -> "[" ^ string_of_pattern h ^ " | " ^ string_of_pattern t ^ "]"
-  | PInt i -> i
+  | PInt i -> Z.to_string i
   | PTuple l -> "{" ^ String.concat "," (List.map string_of_pattern l) ^ "}"
 
 let string_of_fundef buf fd =
