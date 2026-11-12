@@ -14,7 +14,6 @@ rocq.beam
 _anvl_build/
 test/plugin/*.cmxs
 test/plugin/*.cma
-test/extracted/g*/
-test/extracted/stage/
+test/extracted/*/src/
 anvl_lock/
 familiar_workdir/
