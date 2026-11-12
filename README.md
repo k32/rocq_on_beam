@@ -63,6 +63,52 @@ operating on the tagged tuple `{'pair', X, Y}` — see `test/poly.v`.
 Standard-library dependencies (e.g. `Nat.add`) are extracted into the
 same monolithic module, as with the usual `Extraction "file" ...`.
 
+### Classes and instances
+
+Typeclasses need no special handling: Rocq elaborates them away before
+extraction, so they arrive as plain records. In practical terms:
+
+- A `Class` is a one-constructor record. It extracts to a tagged
+  tuple, e.g. `{'Build_Show', Show_fn, Shown_fn}` — field order is the
+  declaration order, minus erased `Prop` fields (see below).
+- An `Instance` is a nullary constant of record type, extracted as a
+  function `'show_Z'/0` returning the tuple.
+- A **method call resolves at elaboration time**: `show z` in Rocq
+  becomes "build the instance's tuple, project the field, apply". You
+  never get runtime typeclass search in the generated code.
+- A **generic function** `Definition showTwice {A} (s : Show A) (x : A)`
+  keeps the dictionary as its first argument, exactly like in the
+  OCaml backend. From Erlang, pass the dictionary by hand — either the
+  extracted instance or a literal tuple:
+
+```erlang
+%% dictionary from the extracted instance
+0 = typeclass:describe(-42),
+%% ...or hand-built: field order follows the class declaration
+Dict = {'Build_Show', fun(_) -> 9 end, fun(N) -> N + 1 end},
+18 = typeclass:showTwice(Dict, 5).
+```
+
+- **Superclasses** (`DS_show :> Show A`) are nested record fields and
+  work through the ordinary tuple encoding; projection is a match.
+- **`Prop` fields are erased**: a class with proof-valued members
+  produces a *shorter* tuple than its field list suggests, since Rocq
+  extraction keeps only the computationally relevant fields. Check the
+  generated `.core` (or rely on the constructor name prefix
+  `'Build_...`') when constructing dictionaries from Erlang.
+- There is no runtime instance resolution on the Erlang side: pick (or
+  build) the dictionary explicitly. If you want the Erlang caller to
+  avoid dictionaries entirely, export instance-specialized wrappers
+  from Rocq (e.g. `Definition describe z := show z`), which embed the
+  choice of instance at extraction time.
+
+One performance note: each method call rebuilds the instance tuple and
+projects from it (that is Rocq's extracted term). Correct, but if a
+hot path bothers you, wrap rather than optimize the extractor.
+
+A full worked example lives in `test/typeclass.v` and
+`test/src/typeclass_tests.erl`.
+
 A small support library ships with the plugin under `theories/`
 (logical name `Erlang`): `Runtime` (markers), `BIF` (the `HMap`
 interface), `Types` (`MapFindResult`), `EqDecNat` (an EqDec instance
