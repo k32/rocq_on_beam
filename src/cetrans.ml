@@ -87,7 +87,10 @@ type binder =
 
 type ctx = {
   env : binder list; (* innermost first *)
-  funs : (atom * int) KerName.Map.t; (* toplevel functions *)
+  funs : (Cerlang.atom * atom * int) KerName.Map.t;
+    (* all extracted functions, module-wide: module name, function
+       name, arity *)
+  cur_module : Cerlang.atom; (* the module being translated *)
   counter : int ref;
 }
 
@@ -153,6 +156,8 @@ let trans_var ctx n =
 
 type callee =
   | Local_fun of Cerlang.atom * int (* one of our fundefs *)
+  | Foreign_fun of Cerlang.atom * Cerlang.atom * int
+    (* a function of another extracted module: module, name, arity *)
   | Local_var of int * int (* variable, effective arity *)
   | Remote of Cenative.target (* native (or plain remote) call *)
 
@@ -213,8 +218,13 @@ and global_callee ctx r =
       Some (Remote (Cenative.NativeValue v), "a native value", 0)
   | Cenative.NotNative -> (
       match KerName.Map.find_opt (Table.repr_of_r r) ctx.funs with
-      | Some (fname, arity) ->
-          Some (Local_fun (fname, arity), "an extracted function", 0)
+      | Some (m, fname, arity) ->
+          if m = ctx.cur_module then
+            Some (Local_fun (fname, arity), "an extracted function", 0)
+          else
+            (* a function of another module being extracted: a remote
+               call, with the module path as the module name *)
+            Some (Foreign_fun (m, fname, arity), "a foreign function", 0)
       | None -> None)
 
 and render_remote ctx r t args =
@@ -260,6 +270,11 @@ and trans_apply ctx a =
           apply_callee ctx what
             (fun a -> EApply (CExpr (EFunRef (fname, arity)), a))
             arity ml_drop args
+      | Some (Foreign_fun (m, f, arity), what, _) ->
+          (* a call into another extracted module *)
+          apply_callee ctx what
+            (fun a -> EApply (CGlobal (m, f), a))
+            arity 0 args
       | Some (Local_var _, _, _) -> assert false
       | None ->
           (* unknown global: a plain remote call *)
@@ -300,6 +315,14 @@ and trans_global ctx r =
   | Some (Local_fun (fname, arity), what, _) ->
       eta_info (what ^ " used as a value (fun reference)");
       Cerlang.EFunRef (fname, arity)
+  | Some (Foreign_fun (m, f, arity), what, _) ->
+      (* value position: synthesize a closure of the remote call *)
+      eta_info (what ^ " used as a value (closure synthesized)");
+      let vars = List.init arity (fun _ -> fresh_var ctx) in
+      Cerlang.EFun
+        ( vars,
+          Cerlang.EApply
+            (Cerlang.CGlobal (m, f), List.map (fun w -> Cerlang.EVar w) vars) )
   | Some (Local_var _, _, _) -> assert false
   | Some (Remote Cenative.NotNative, _, _) -> assert false
   | None -> (
@@ -335,22 +358,29 @@ and trans_fun ctx a =
       (ctx, []) (List.rev ids)
   in
   let params = List.rev params in
+  (* extraction's eta-contraction can produce [fun x1..xk -> f] where f
+     is an n-ary function: the trailing parameters were absorbed into
+     f. Expand to the full uncurried arity so that higher-order uses
+     (e.g. as a maps:fold callback) see one n+k-ary function. The
+     reference may be local (a fun reference) or foreign (a synthesized
+     closure of a remote call). *)
+  let expand_eta callee n what =
+    eta_info what;
+    let extra = List.init n (fun _ -> fresh_var ctx) in
+    Cerlang.EFun
+      ( params @ extra,
+        Cerlang.EApply (callee, List.map (fun w -> Cerlang.EVar w) extra) )
+  in
   match trans_expr ctx body with
   | Cerlang.EFunRef (f, n) when n > 0 ->
-      (* extraction's eta-contraction can produce [fun x1..xk -> f]
-       where f is an n-ary function: the trailing parameters were
-       absorbed into f. Expand to the full uncurried arity so that
-       higher-order uses (e.g. as a maps:fold callback) see one
-       n+k-ary function *)
-      eta_info
+      expand_eta (Cerlang.CExpr (Cerlang.EFunRef (f, n))) n
         "lambda reduced to a bare function reference by extraction's \
-         eta-contraction, re-expanded";
-      let extra = List.init n (fun _ -> fresh_var ctx) in
-      Cerlang.EFun
-        ( params @ extra,
-          Cerlang.EApply
-            ( Cerlang.CExpr (Cerlang.EFunRef (f, n)),
-              List.map (fun w -> Cerlang.EVar w) extra ) )
+         eta-contraction, re-expanded"
+  | Cerlang.EFun (extra, Cerlang.EApply ((Cerlang.CGlobal _ as c), args))
+    when args = List.map (fun w -> Cerlang.EVar w) extra ->
+      expand_eta c (List.length extra)
+        "lambda reduced to a remote call closure by extraction's \
+         eta-contraction, re-expanded"
   | body -> Cerlang.EFun (params, body)
 
 (* A non-recursive binding:
@@ -382,7 +412,7 @@ and effective_arity ctx a =
       | Cenative.NativeIdentity -> Some 1
       | _ -> (
           match KerName.Map.find_opt (Table.repr_of_r r) ctx.funs with
-          | Some (_, ar) -> Some ar
+          | Some (_, _, ar) -> Some ar
           | None -> None))
   | MLapp _ ->
       let rec spine acc = function

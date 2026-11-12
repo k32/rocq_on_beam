@@ -14,7 +14,7 @@ origin_test() ->
 
 projection_test() ->
     ?assertEqual(nat(3),
-                 record:sum_coords(fun record:add/2,
+                 record:sum_coords(fun 'Corelib.Init.Nat':add/2,
                                              point(nat(1), nat(2)))).
 
 match_test() ->

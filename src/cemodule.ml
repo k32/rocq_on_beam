@@ -7,6 +7,14 @@
 (*  Cerlang module(s). Term translation (de Bruijn resolution, eta      *)
 (*  handling, constructors, fixpoints) stays in [cetrans], which this   *)
 (*  module drives; native decisions remain in [cenative].               *)
+(*                                                                       *)
+(*  Two modes:                                                           *)
+(*  - Monolithic: every declaration lands in one module, named by the   *)
+(*    caller (the [CoreErlang Extraction "file" ...] command).          *)
+(*  - Separate: one module per Rocq module, named by its ModPath        *)
+(*    (dotted, e.g. 'foo.Inner'); submodules recurse into [MEstruct],   *)
+(*    aliases ([MEident]) emit nothing, module types are signature-only *)
+(*    and skipped, residual functors are an error.                      *)
 (*-----------------------------------------------------------------------*)
 
 open Names
@@ -14,6 +22,8 @@ module Miniml = Extraction_plugin.Miniml
 module Mlutil = Extraction_plugin.Mlutil
 module Table = Extraction_plugin.Table
 open Miniml
+
+type mode = Monolithic | Separate
 
 (* One toplevel function in the making: its lambda identifiers
    (outermost-first), the body under the lambdas, the initial
@@ -28,8 +38,58 @@ type fdef = {
   fd_exported : bool;
 }
 
-let fundefs_of_decl exported d =
-  let is_exported r = KerName.Set.mem (Table.repr_of_r r) exported in
+(* -------------------------------------------------------------------- *)
+(* Grouping declarations per Rocq module                                 *)
+(* -------------------------------------------------------------------- *)
+
+(* A module under construction: its (dotted) name and its declarations,
+   dependency-ordered *)
+type module_group = { mg_name : Cerlang.atom; mg_decls : ml_decl list }
+
+let decls_of_elems elems =
+  List.filter_map
+    (fun (_, elem) -> match elem with SEdecl d -> Some d | _ -> None)
+    elems
+
+(* [Separate] grouping: the toplevel structure pairs are one group per
+   pair (their ModPath), submodules recurse. This module's own decls
+   come first, then the submodules'. *)
+let rec group_of_module mp elems =
+  let decls = ref [] in
+  let subs = ref [] in
+  List.iter
+    (fun (_, elem) ->
+      match elem with
+      | SEdecl d -> decls := d :: !decls
+      | SEmodule m -> (
+          match m.ml_mod_expr with
+          | MEstruct (mp', elems') ->
+              subs := group_of_module mp' elems' :: !subs
+          | MEident _ ->
+              (* an alias: emits nothing; references to its members
+                 resolve to the target module via the kernel name *)
+              ()
+          | MEfunctor _ | MEapply _ ->
+              CErrors.user_err
+                Pp.(
+                  str
+                    "CoreErlang extraction: functor modules are not \
+                     extractable (module-level functions do not exist in \
+                     Core Erlang)"
+                  ++ str " while extracting module "
+                  ++ str (ModPath.to_string mp)))
+      | SEmodtype _ -> (* signature-only *) ())
+    elems;
+  { mg_name = Cerlang.Atom (ModPath.to_string mp);
+    mg_decls = List.rev !decls
+  }
+  :: List.concat (List.rev !subs)
+
+(* -------------------------------------------------------------------- *)
+(* Declarations -> fundefs                                               *)
+(* -------------------------------------------------------------------- *)
+
+let fundefs_of_decl is_exported d =
   match d with
   | Dind _ | Dtype _ -> []
   | Dterm (r, body, _) ->
@@ -74,59 +134,31 @@ let fundefs_of_decl exported d =
             fd_exported = is_exported rv.(j);
           })
 
-(* Turn a MiniML structure into Cerlang modules (one for now; the
-   nested-modules work will grow this into one module per Rocq
-   module, each named by its ModPath):
-   1. build the toplevel function map (for call resolution);
-   2. translate each declaration's body under its group binders.
-   [exported] is the set of kernel names marked [export]; unmarked
-   functions are extracted (they may be needed by the exported ones)
-   but stay internal, i.e. absent from the module export list. *)
-let translate_structure ~(modname : Cerlang.atom)
-    ?(exported = KerName.Set.empty) struc : Cerlang.module_ list =
-  let funs = ref KerName.Map.empty in
-  let add r arity =
-    funs := KerName.Map.add (Table.repr_of_r r) (Cetrans.global_name r, arity) !funs
+(* -------------------------------------------------------------------- *)
+(* Structure -> Cerlang modules                                          *)
+(* -------------------------------------------------------------------- *)
+
+let translate_funs ?(exported = KerName.Set.empty)
+    ?(internal = KerName.Set.empty) ~mode:(m : mode) ~funs mgroup =
+  let is_exported =
+    match m with
+    | Monolithic -> fun r -> KerName.Set.mem (Table.repr_of_r r) exported
+    | Separate ->
+        (* cross-module calls need exported callees; only explicitly
+           internal ([noexport]) references stay out *)
+        fun r -> not (KerName.Set.mem (Table.repr_of_r r) internal)
   in
-  let decls =
-    List.concat_map
-      (fun (_, elems) ->
-        List.filter_map
-          (fun (_, elem) -> match elem with SEdecl d -> Some d | _ -> None)
-          elems)
-      struc
-  in
-  (* pass 1: initial arities (from the leading lambdas) *)
-  List.iter
-    (fun d ->
-      let skip =
-        match d with
-        | Dterm (r, _, _) -> Cenative.is_erlangbif r
-        | Dfix (rv, _, _) -> Array.exists Cenative.is_erlangbif rv
-        | _ -> false
-      in
-      if not skip then
-        match d with
-        | Dterm (r, body, _) -> add r (Cetrans.count_lams body)
-        | Dfix (rv, defs, _) ->
-            Array.iteri
-              (fun j r ->
-                add r
-                  (match defs.(j) with
-                  | MLfix (_, _, inner) -> Cetrans.count_lams inner.(j)
-                  | b -> Cetrans.count_lams b))
-              rv
-        | _ -> ())
-    decls;
-  (* pass 2: translate in dependency order (the structure is
-     topologically sorted), promoting eta-expanded bodies and keeping
-     the arity map in sync for the definitions that follow. *)
+  let { mg_name = m; mg_decls = decls } = mgroup in
   let funcs =
-    List.concat_map (fundefs_of_decl exported) decls
+    List.concat_map (fundefs_of_decl is_exported) decls
     |> List.filter (fun fd -> not (Cenative.is_erlangbif_kn fd.fd_kn))
     |> List.map (fun fd ->
         (match fd.fd_name with Cerlang.Atom n -> Cetrans.current_function := n);
-        let ctx = { Cetrans.env = fd.fd_group; funs = !funs; counter = ref 0 } in
+        let ctx =
+          { Cetrans.env = fd.fd_group; funs = !funs; cur_module = m;
+            counter = ref 0
+          }
+        in
         let ctx, params =
           List.fold_left
             (fun (ctx, params) id ->
@@ -148,7 +180,7 @@ let translate_structure ~(modname : Cerlang.atom)
           | _ -> (params, body)
         in
         (* later declarations must see the promoted arity *)
-        funs := KerName.Map.add fd.fd_kn (fd.fd_name, List.length params) !funs;
+        funs := KerName.Map.add fd.fd_kn (m, fd.fd_name, List.length params) !funs;
         {
           Cerlang.fun_name = fd.fd_name;
           fun_params = List.rev params;
@@ -156,4 +188,61 @@ let translate_structure ~(modname : Cerlang.atom)
           fun_exported = fd.fd_exported;
         })
   in
-  [ { Cerlang.mod_name = modname; mod_funcs = funcs } ]
+  { Cerlang.mod_name = m; mod_funcs = funcs }
+
+(* Turn a MiniML structure into Cerlang modules.
+   1. group the declarations per module;
+   2. build the global function map (module, name, arity) used for
+      call resolution -- cross-module references become remote calls;
+   3. translate each group's declarations in dependency order (the
+      structure is topologically sorted), promoting eta-expanded
+      bodies and keeping the arity map in sync.
+   [exported] is the set of kernel names marked [export]; unmarked
+   functions are extracted (they may be needed by the exported ones)
+   but stay internal, i.e. absent from the module export list. *)
+let translate_structure ~(modname : Cerlang.atom)
+    ?(exported = KerName.Set.empty) ?(internal = KerName.Set.empty)
+    ?(mode = Monolithic) struc :
+    Cerlang.module_ list =
+  let groups =
+    match mode with
+    | Monolithic ->
+        [ { mg_name = modname;
+            mg_decls = List.concat_map (fun (_, elems) -> decls_of_elems elems) struc
+          } ]
+    | Separate ->
+        List.concat_map
+          (fun (mp, elems) -> group_of_module mp elems)
+          struc
+  in
+  (* pass 1: initial arities (from the leading lambdas), all modules *)
+  let funs = ref KerName.Map.empty in
+  List.iter
+    (fun { mg_name = m; mg_decls = decls } ->
+      List.iter
+        (fun d ->
+          match d with
+          | Dterm (r, body, _) when not (Cenative.is_erlangbif r) ->
+              funs :=
+                KerName.Map.add (Table.repr_of_r r)
+                  (m, Cetrans.global_name r, Cetrans.count_lams body)
+                  !funs
+          | Dfix (rv, defs, _)
+            when not (Array.exists Cenative.is_erlangbif rv) ->
+              Array.iteri
+                (fun j r ->
+                  let a =
+                    match defs.(j) with
+                    | MLfix (_, _, inner) -> Cetrans.count_lams inner.(j)
+                    | b -> Cetrans.count_lams b
+                  in
+                  funs :=
+                    KerName.Map.add (Table.repr_of_r r)
+                      (m, Cetrans.global_name r, a)
+                      !funs)
+                rv
+          | _ -> ())
+        decls)
+    groups;
+  (* pass 2: translate, module by module *)
+  List.map (translate_funs ~exported ~internal ~mode ~funs) groups
