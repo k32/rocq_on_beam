@@ -19,7 +19,7 @@ module Table = Extraction_plugin.Table
 (*  [cetrans] queries this module ([is_*] predicates, [constructor],     *)
 (*  [pattern], [rewrite_branch], [zop_of]) and passes control; it never  *)
 (*  decides native translations itself.                                   *)
-(*----------------------------------------------------------------------- *)
+(*-----------------------------------------------------------------------*)
 
 module Miniml = Extraction_plugin.Miniml
 open Miniml
@@ -57,7 +57,9 @@ let global_to_ctor (r : global) : ctor option =
      | "prod", ("Corelib.Init.Datatypes" | "Stdlib.Datatypes" | "Coq.Datatypes"), 1 -> Some CPair
      | "nat", ("Corelib.Init.Datatypes" | "Stdlib.Init.Datatypes" | "Coq.Init.Datatypes"), 1 -> Some CO
      | "nat", ("Corelib.Init.Datatypes" | "Stdlib.Init.Datatypes" | "Coq.Init.Datatypes"), 2 -> Some CS
-     | ("Z" | "positive"), "Corelib.Numbers.BinNums", _ ->
+     | ("Z" | "positive"),
+       ("Corelib.Numbers.BinNums" | "Stdlib.Numbers.BinNums"
+       | "Coq.Numbers.BinNums"), _ -> (* aliases, as the datatypes above *)
        Some
          (* constructor order in BinNums: Z: Z0, Zpos, Zneg;
           positive: xI, xO, xH *)
@@ -314,7 +316,8 @@ let is_native_branch (pat : ml_pattern) =
 (* Both the canonical constants (Corelib.BinNums.IntDef.Z) and their
    Stdlib wrappers (Stdlib.ZArith.BinInt.Z) are matched: they are
    distinct constants, and which one a term references depends on
-   whether the user imported Corelib or Stdlib. *)
+   whether the user imported Corelib or Stdlib. The internal Stdlib
+   definitions (Stdlib.ZArith.BinIntDef.Z) are matched as well. *)
 (* -------------------------------------------------------------------- *)
 
 (* -------------------------------------------------------------------- *)
@@ -334,6 +337,11 @@ let is_native_branch (pat : ml_pattern) =
 type target =
   | NativeCall of Cerlang.atom * Cerlang.atom * int * int
     (* module, function, arity, leading arguments to drop *)
+  | NativeCall2 of Cerlang.atom * Cerlang.atom * Cerlang.expr * bool
+    (* a unary ML function rendered as a binary BIF call: module,
+       function, the synthetic operand, and whether it comes first
+       (f(syn, x), e.g. Z.opp -> 0 - X) or last (f(x, syn), e.g.
+       Z.succ -> X + 1) *)
   | NativeIdentity  (* the identity: the argument itself (e.g. Z.of_nat) *)
   | NativeValue of Cerlang.expr  (* a fixed value *)
   | NotNative
@@ -363,8 +371,16 @@ let global_to_z (r : global) : target option =
          (match l with "add" -> "+" | "sub" -> "-" | _ -> "*")
          2)
   | ("max" | "min"), true -> Some (call "erlang" l 2)
-  | ("opp" | "pred"), true -> Some (call "erlang" "-" 2) (* 0 - X / X - 1 *)
-  | "succ", true -> Some (call "erlang" "+" 2) (* X + 1 *)
+  | "succ", true -> Some (NativeCall2 (Cerlang.Atom "erlang", Cerlang.Atom "+", Cerlang.EInt "1", false)) (* X + 1 *)
+  | ("opp" | "pred"), true ->
+    (* both are unary ML functions but the BIF '-' is binary: supply the
+       missing operand synthetically (opp -> 0 - X, pred -> X - 1) *)
+    Some
+      (NativeCall2
+         ( Cerlang.Atom "erlang",
+           Cerlang.Atom "-",
+           (match l with "opp" -> Cerlang.EInt "0" | _ -> Cerlang.EInt "1"),
+           l = "opp" ))
   | "abs", true -> Some (call "erlang" "abs" 1)
   | "eqb", true -> Some (call "erlang" "=:=" 2)
   | "leb", true -> Some (call "erlang" "=<" 2)
@@ -396,6 +412,7 @@ let global_target (r : global) : target =
 let call_arity r =
   match global_target r with
   | NativeCall (_, _, a, _) -> Some a
+  | NativeCall2 _ -> Some 1
   | _ -> None
 
 (* render a fully-applied native call (exactly [arity] translated args,
@@ -403,6 +420,10 @@ let call_arity r =
 let render_call t args =
   match (t, args) with
   | NativeCall (m, f, _, _), a -> Cerlang.EApply (Cerlang.CGlobal (m, f), a)
+  | NativeCall2 (m, f, syn, true), [ a ] ->
+      Cerlang.EApply (Cerlang.CGlobal (m, f), [ syn; a ])
+  | NativeCall2 (m, f, syn, false), [ a ] ->
+      Cerlang.EApply (Cerlang.CGlobal (m, f), [ a; syn ])
   | NativeIdentity, [ a ] -> a
   | _ -> assert false
 

@@ -23,15 +23,17 @@ VERNAC ARGUMENT EXTEND export_spec
 | [ global(x) ] -> { (x, true) }
 END
 
-{
-}
-
-VERNAC COMMAND EXTEND CoreErlangExtraction CLASSIFIED AS QUERY STATE opaque_access
 (* Print the Core Erlang extraction of a global reference to stdout.
    The reference may be marked [noexport(...)] to keep it out of the
-   module exports (by default every listed reference is exported). *)
+   module exports (by default every listed reference is exported).
+   Purely reads and prints: classified as QUERY. *)
+VERNAC COMMAND EXTEND CoreErlangExtraction CLASSIFIED AS QUERY STATE opaque_access
 | [ "CoreErlang" "Extraction" export_spec(x) ] -> { coreerlang_extraction x }
-(* Monolithic extraction to a Core Erlang file *)
+END
+
+(* Monolithic extraction to a Core Erlang file: writes a file to
+   disk, so it is classified as SIDEFF rather than QUERY. *)
+VERNAC COMMAND EXTEND CoreErlangExtractionFile CLASSIFIED AS SIDEFF STATE opaque_access
 | [ "CoreErlang" "Extraction" string(f) ne_export_spec_list(l) ]
   -> { coreerlang_extraction_file f l }
 END

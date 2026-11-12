@@ -8,7 +8,7 @@
 (*                                                                       *)
 (*  This module only drives Rocq: locate references, run the extraction  *)
 (*  environment, and print / write the result.                           *)
-(*----------------------------------------------------------------------- *)
+(*-----------------------------------------------------------------------*)
 
 open Names
 module Miniml = Extraction_plugin.Miniml
@@ -80,12 +80,12 @@ let coreerlang_extraction_file ~opaque_access f l =
       ([], KerName.Set.empty) l
   in
   let struc = extract_structure ~opaque_access refs in
-  (* the file is named after the module so that erlc accepts it *)
+  (* the file is named after the module (erlc requires name and module
+     to match); [basename] keeps it a single path component and any
+     quotes are escaped (though erlc would reject such names anyway) *)
   let base = Filename.remove_extension (Filename.basename f) in
   let modname = Cerlang.Atom base in
   let dir = Filename.dirname f in
-  (* the file is named after the module, with the atom escaped so the
-     filename is filesystem-safe *)
   let file =
     (if dir = "." then "" else dir ^ "/")
     ^ Ceprint.escape_atom base ^ ".core"

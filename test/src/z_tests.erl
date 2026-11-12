@@ -24,6 +24,15 @@ eq_test() ->
     ?assertEqual('true', z:eq(3, 3)),
     ?assertEqual('false', z:eq(3, 4)).
 
+%% unary library ops render as binary BIF calls with a synthetic operand
+unary_ops_test() ->
+    ?assertEqual(-10, z:negx(10)),
+    ?assertEqual(0, z:negx(0)),
+    ?assertEqual(11, z:succx(10)),
+    ?assertEqual(-9, z:succx(-10)),
+    ?assertEqual(9, z:predx(10)),
+    ?assertEqual(-11, z:predx(-10)).
+
 %% partially applied library function (eta-expanded at use site)
 half_away_test() ->
     ?assertEqual(9, z:half_away(10)).

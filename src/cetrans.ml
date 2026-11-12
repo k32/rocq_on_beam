@@ -155,12 +155,15 @@ type callee =
   | Remote of Cenative.target        (* native (or plain remote) call *)
 
 (* translate [drop] arguments away and the rest *)
-let rec trans_args ctx drop args =
-  if drop = 0 then List.map (trans_expr ctx) args
-  else
-    match args with
-    | _ :: t -> trans_args ctx (drop - 1) t
-    | [] -> []
+  let rec trans_args ctx drop args =
+    if drop = 0 then List.map (trans_expr ctx) args
+    else
+      match args with
+      | _ :: t -> trans_args ctx (drop - 1) t
+      | [] ->
+          (* [drop] exceeds the argument list: an arity bookkeeping bug
+             in the native-call tables *)
+          assert false
 
 and take k l =
   if k = 0 then [] else match l with x :: t -> x :: take (k - 1) t | [] -> []
@@ -199,6 +202,7 @@ and apply_callee ctx what render k ml_drop args =
 and global_callee ctx r =
   match Cenative.global_target r with
   | Cenative.NativeCall _ as t -> Some (Remote t, "a native function", 0)
+  | Cenative.NativeCall2 _ as t -> Some (Remote t, "a native function", 0)
   | Cenative.NativeIdentity -> Some (Remote Cenative.NativeIdentity, "the identity", 0)
   | Cenative.NativeValue v ->
     Some (Remote (Cenative.NativeValue v), "a native value", 0)
@@ -209,7 +213,8 @@ and global_callee ctx r =
 
 and render_remote ctx r t args =
   match t with
-  | Cenative.NativeCall _ | Cenative.NativeIdentity -> Cenative.render_call t args
+  | Cenative.NativeCall _ | Cenative.NativeCall2 _ | Cenative.NativeIdentity ->
+    Cenative.render_call t args
   | Cenative.NativeValue v ->
     (* a fixed value; only a nullary application makes sense *)
     if args = [] then v
@@ -234,6 +239,9 @@ and trans_apply ctx a =
     match global_callee ctx r with
     | Some (Remote ((Cenative.NativeCall (_, _, k, ml_drop) as t)), what, _) ->
       apply_callee ctx what (render_remote ctx r t) k ml_drop args
+    | Some (Remote ((Cenative.NativeCall2 _ as t)), what, _) ->
+      (* unary ML arity; the synthetic BIF operand is added at render *)
+      apply_callee ctx what (render_remote ctx r t) 1 0 args
     | Some (Remote Cenative.NativeIdentity, _, _) ->
       Cenative.render_call Cenative.NativeIdentity (List.map (trans_expr ctx) args)
     | Some (Remote ((Cenative.NativeValue _ | Cenative.NotNative) as t), _, _) ->
@@ -267,6 +275,10 @@ and trans_global ctx r =
     eta_info (what ^ " used as a value (closure synthesized)");
     let vars = List.init arity (fun _ -> fresh_var ctx) in
     Cerlang.EFun (vars, render_remote ctx r t (List.map (fun w -> Cerlang.EVar w) vars))
+  | Some (Remote ((Cenative.NativeCall2 _ as t)), what, _) ->
+    eta_info (what ^ " used as a value (closure synthesized)");
+    let v = fresh_var ctx in
+    Cerlang.EFun ([ v ], render_remote ctx r t [ Cerlang.EVar v ])
   | Some (Remote Cenative.NativeIdentity, _, _) ->
     let v = fresh_var ctx in
     Cerlang.EFun ([ v ], Cerlang.EVar v)
@@ -303,9 +315,10 @@ and trans_fun ctx a =
     List.fold_left
       (fun (ctx, params) id ->
         let v = fresh_var ctx in
-        (push_binder (BVar v) ctx, params @ [ v ]))
+        (push_binder (BVar v) ctx, v :: params))
       (ctx, []) (List.rev ids)
   in
+  let params = List.rev params in
   match trans_expr ctx body with
   | Cerlang.EFunRef (f, n) when n > 0 ->
     (* extraction's eta-contraction can produce [fun x1..xk -> f]
@@ -314,7 +327,7 @@ and trans_fun ctx a =
        higher-order uses (e.g. as a maps:fold callback) see one
        n+k-ary function *)
     eta_info
-      ("lambda reduced to a bare function reference by extraction's        eta-contraction, re-expanded");
+      ("lambda reduced to a bare function reference by extraction's eta-contraction, re-expanded");
     let extra = List.init n (fun _ -> fresh_var ctx) in
     Cerlang.EFun
       (params @ extra,
@@ -347,6 +360,7 @@ and effective_arity ctx a =
   | MLglob r -> (
     match Cenative.global_target r with
     | Cenative.NativeCall (_, _, a, drop) -> Some (a + drop)
+    | Cenative.NativeCall2 _ -> Some 1
     | Cenative.NativeIdentity -> Some 1
     | _ -> (
       match KerName.Map.find_opt (Table.repr_of_r r) ctx.funs with
@@ -367,12 +381,10 @@ and effective_arity ctx a =
      | _ -> None)
   | _ -> None
 
-(* A global in value position (not applied):
-     - one of our functions -> the fun reference ['f'/n]
-     - otherwise             -> error. With monolithic extraction every
-       dependency is part of the structure, so this should not happen;
-       there is no sensible Core Erlang to emit for a reference to an
-       unextracted constant. *)
+(* Constructor application [MLcons (r, args)]: builds the value of
+   constructor [r] applied to [args] — natively lowered constructors
+   are handled by [Cenative]; everything else falls back to the tagged
+   encoding ('tag' for nullary, {'tag', args...} otherwise). *)
 and trans_constructor ctx r args =
   (* natively lowered constructors are handled by [Cenative];
      everything else falls back to the tagged encoding *)
@@ -422,11 +434,12 @@ and trans_case ctx t branches =
           List.fold_left
             (fun (ctx, names) id ->
               let w = fresh_var ctx in
-              (push_binder (BVar w) ctx, names @ [ w ]))
+              (push_binder (BVar w) ctx, w :: names))
             (ctx, []) ids
         in
+        let names = List.rev names in
         let name = match names with [ x ] -> Some x | _ -> None in
-        if Cenative.is_native_branch pat && (ids = [] || List.length ids = 1)
+        if Cenative.is_native_branch pat && List.length ids <= 1
         then begin
           let p, g, binders = Cenative.translate_branch v pat name in
           let body = trans_expr ctx' body in
@@ -484,7 +497,7 @@ and trans_fix ctx i ids defs =
         })
       (Array.to_list defs)
   in
-  let sel = try List.nth fresh i with _ -> List.hd fresh in
+  let sel = match List.nth_opt fresh i with Some s -> s | None -> assert false in
   Cerlang.ELetrec (bindings, Cerlang.EFunRef (fst sel, snd sel))
 
 and trans_expr ctx a =
@@ -583,7 +596,7 @@ let fundefs_of_decl exported d =
         | MLfix (_, _, inner) -> count_lams inner.(j)
         | b -> count_lams b
       in
-      (* binder list for the group: [ids.(k-1);...;ids.(0)], i.e. the same
+      (* binder list for the group: [rv.(k-1);...;rv.(0)], i.e. the same
        order as [rv] reversed; each entry points to the toplevel name *)
       let group =
         List.init k (fun m ->

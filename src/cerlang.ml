@@ -3,7 +3,7 @@
 (*                                                                       *)
 (*  A minimal subset of Core Erlang, exactly covering what the           *)
 (*  translation from MiniML (see cetrans.ml) produces.                   *)
-(*----------------------------------------------------------------------- *)
+(*-----------------------------------------------------------------------*)
 
 (* Atoms are the names appearing in Core Erlang source: module names,
    function names, constructor tags, ... The type is isomorphic to
@@ -29,7 +29,10 @@ type expr =
   | ECons of expr * expr (* [H|T] : list cons *)
   | ETuple of expr list (* {e1,...,en} : untagged tuple *)
   | EMap of (expr * expr) list (* ~{k=>v,...}~ : map literal *)
-  | EBinary of string (* #<...># binary of raw bytes *)
+  | EBinary of string
+    (* #{#<n>(8,1,'integer',['unsigned'|['big']]) ...}# : one integer
+       segment per byte of the raw string; the segment form is chosen at
+       printing time (see [Ceprint.emit_expr]) *)
   | EApply of callee * expr list
     (* call 'mod':'fun' (args) / apply H (args) / primop 'p' (args) *)
   | EFun of var list * expr (* fun (x1,...,xn) -> body *)

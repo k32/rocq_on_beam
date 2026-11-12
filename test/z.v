@@ -16,6 +16,12 @@ Definition mx (x y : Z) : Z := Z.max x y.
 Definition absdiff (x y : Z) : Z := Z.abs (x - y).
 Definition eq (x y : Z) : bool := x =? y.
 
+(* unary library operations: unary ML functions rendered as binary BIF
+   calls with a synthetic operand (opp -> 0 - X, succ -> X + 1, ...) *)
+Definition negx (x : Z) : Z := - x.
+Definition succx (x : Z) : Z := Z.succ x.
+Definition predx (x : Z) : Z := Z.pred x.
+
 (* partially applied library function *)
 Definition half_away (x : Z) : Z := Z.sub x 1.
 
@@ -33,4 +39,5 @@ Definition sgn (z : Z) : Z :=
 
 CoreErlang Extraction "z" fourtytwo minus7 big
   sum prod mx absdiff eq
+  negx succx predx
   half_away ofn ton sgn.
