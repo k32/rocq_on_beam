@@ -1,0 +1,15 @@
+;; Stage the built plugin for findlib/rocq: the extraction hook runs
+;; rocq with -I test/plugin, where the META file already lives. The
+;; copies are promoted into the source tree (and gitignored), so no
+;; manually maintained symlinks into _build are needed.
+(rule
+ (target coreerlang_plugin.cma)
+ (deps %{workspace_root}/src/coreerlang_plugin.cma)
+ (action (copy %{deps} %{target}))
+ (mode promote))
+
+(rule
+ (target coreerlang_plugin.cmxs)
+ (deps %{workspace_root}/src/coreerlang_plugin.cmxs)
+ (action (copy %{deps} %{target}))
+ (mode promote))
