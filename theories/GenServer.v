@@ -20,25 +20,3 @@ Module Type gen_server.
 
   Parameter handle_cast : Cast -> State -> @handle_cast_res State ExitReason.
 End gen_server.
-
-Module example <: gen_server.
-  Definition InitArg := nat.
-
-  Definition ExitReason := bool.
-
-  Definition State := nat.
-
-  Inductive cast := inc | dec.
-
-  Definition Cast := cast.
-
-  Definition init (n : InitArg) : @init_res State ExitReason :=
-    i_ok n.
-
-  Definition handle_cast cast state : @handle_cast_res State ExitReason :=
-    cst_noreply
-      match cast with
-      | inc => S state
-      | dec => state - 1
-      end.
-End example.
