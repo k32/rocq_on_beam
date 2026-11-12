@@ -1,6 +1,7 @@
 Declare ML Module "rocq-core-erlang".
 
 From Erlang Require Import GenServer.
+(* From Hammer Require Import Hammer Tactics. *)
 
 (* Two different gen_servers: a counter and a LIFO. Each is a module
    ascribing to the gen_server module type; separate extraction emits
@@ -136,40 +137,34 @@ Module LIFO_state_invariant : gen_server_invariant LIFO.
     let (d, l) := s in
     length d = l.
 
-  Lemma init_valid arg :
-    match LIFO.init arg  with
-    | i_ok s => prop s
-    | _ => True
-    end.
+  Lemma init_valid : init_valid_t prop LIFO.init.
   Proof.
     easy.
   Qed.
 
-  Lemma handle_cast_valid s cast :
-      prop s ->
-      match LIFO.handle_cast cast s with
-      | cst_noreply s' => prop s'
-      | cst_stop _ s' => prop s'
-      end.
+  Lemma handle_cast_valid : handle_cast_valid_t prop LIFO.handle_cast.
   Proof.
-    unfold prop, LIFO.handle_cast. intros H.
+    unfold prop,LIFO.handle_cast. intros cast s H.
     destruct s as [d l].
     destruct cast.
-    - rewrite PeanoNat.Nat.add_1_r.
-      rewrite length_cons. now rewrite H.
+    - simpl. lia.
     - destruct d.
       + easy.
       + simpl in H. lia.
   Qed.
 
-  Lemma handle_call_valid : forall `{FromT} s call from,
-      prop s ->
-      match LIFO.handle_call call from s with
-      | c_reply _ _ s' => prop s'
-      | c_stop_reply _ _ _ s' => prop s'
-      end.
+  Lemma handle_info_valid : handle_info_valid_t prop LIFO.handle_info.
   Proof.
-    unfold prop, LIFO.handle_call. intros from_t FromT s call from H.
+    unfold prop,LIFO.handle_info.
+    intros inf s H.
+    now destruct inf.
+  Qed.
+
+  Check @handle_call_valid_t.
+
+  Lemma handle_call_valid : forall `{HF : FromT}, handle_call_valid_t prop LIFO.handle_call.
+  Proof.
+    unfold prop, LIFO.handle_call. intros from_t HF call from s.
     destruct s as [d l].
     destruct call.
     - destruct d.
@@ -177,18 +172,6 @@ Module LIFO_state_invariant : gen_server_invariant LIFO.
       + simpl in *. lia.
     - easy.
     - simpl. lia.
-  Qed.
-
-  Lemma handle_info_valid : forall s inf,
-      prop s ->
-      match LIFO.handle_info inf s with
-      | inf_noreply s' => prop s'
-      | inf_stop _ s' => prop s'
-      end.
-  Proof.
-    unfold prop, LIFO.handle_info. intros s inf H.
-    destruct s as [d l].
-    now destruct inf.
   Qed.
 End LIFO_state_invariant.
 
