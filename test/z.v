@@ -37,7 +37,7 @@ Definition sgn (z : Z) : Z :=
   | Zneg _ => -1
   end.
 
-CoreErlang Extraction "z" fourtytwo minus7 big
+CoreErlang Separate Extraction fourtytwo minus7 big
   sum prod mx absdiff eq
   negx succx predx
   half_away ofn ton sgn.

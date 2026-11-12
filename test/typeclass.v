@@ -40,4 +40,4 @@ Definition describe2 (z : Z) : nat := DS_two z.
 Definition showTwice {A} (s : Show A) (x : A) : nat :=
   show x + show x.
 
-CoreErlang Extraction "typeclass" describe both describe2 showTwice.
+CoreErlang Separate Extraction describe both describe2 showTwice.

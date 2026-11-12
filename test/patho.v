@@ -97,4 +97,4 @@ Definition pipeline (n : nat) : nat :=
 
 Definition pipeline_result : nat := Eval vm_compute in pipeline 5.
 
-CoreErlang Extraction "patho" shadows shadows_result meven meven_result church church_result deepmatch deepmatch_result fixnest fixnest_result zfact zfact_result selfapp selfapp_result pipeline pipeline_result.
+CoreErlang Separate Extraction shadows shadows_result meven meven_result church church_result deepmatch deepmatch_result fixnest fixnest_result zfact zfact_result selfapp selfapp_result pipeline pipeline_result.

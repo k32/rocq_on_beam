@@ -43,4 +43,4 @@ with count_green (g : green) : nat :=
   | GNode r _ => count_red r
   end.
 
-CoreErlang Extraction "inductive" sum_tree mirror count_red count_green.
+CoreErlang Separate Extraction sum_tree mirror count_red count_green.

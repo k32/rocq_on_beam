@@ -39,4 +39,4 @@ Definition cremove (m : HMap.t) : HMap.t :=
 Definition cremove_result : list MapFindResult :=
   Eval vm_compute in map (HMap.find 1) [cremove m1; cremove m2].
 
-CoreErlang Extraction "mcurry" m1 m2 cfold cfind cremove cfold_result cfind_result cremove_result.
+CoreErlang Separate Extraction m1 m2 cfold cfind cremove cfold_result cfind_result cremove_result.

@@ -26,4 +26,4 @@ Definition get_or_zero (k : nat) : nat :=
   | error => 0
   end.
 
-CoreErlang Extraction "hmap" m1 lookup add sum get_or_zero.
+CoreErlang Separate Extraction m1 lookup add sum get_or_zero.

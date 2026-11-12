@@ -17,6 +17,10 @@ CoreErlang Extraction add.
 
 (* write a monolithic .core file (dependencies included) *)
 CoreErlang Extraction "adder" add.
+
+(* separate extraction: no output-file argument; the module (and
+   file) name comes from the Rocq module of the references *)
+CoreErlang Separate Extraction add.
 ```
 
 By default every listed reference is exported (its dependencies are

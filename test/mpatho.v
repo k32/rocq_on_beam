@@ -94,4 +94,4 @@ Definition mpartial_result : nat :=
   Eval vm_compute in
     HMap.fold nat (fun _ v acc => v + acc) 0 (mpartial (mbuild 5)).
 
-CoreErlang Extraction "mpatho" mput3 mremove mnest mbuild mbig mchain msumkeys mshare mpartial mput3_result mremove_result mremove_absent_result mnest_22_result mnest_33_result mbig_result mchain_result msumkeys_result mshare_result mpartial_result.
+CoreErlang Separate Extraction mput3 mremove mnest mbuild mbig mchain msumkeys mshare mpartial mput3_result mremove_result mremove_absent_result mnest_22_result mnest_33_result mbig_result mchain_result msumkeys_result mshare_result mpartial_result.

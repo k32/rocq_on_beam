@@ -68,21 +68,32 @@ let coreerlang_extraction ~opaque_access (x, exported) =
   Feedback.msg_notice
     Pp.(str (translate ~modname:(modname_of_qualid x) ~exported struc))
 
+(* Collect (refs, exported kernel names) from a reference list *)
+let refs_and_exported l =
+  List.fold_left
+    (fun (refs, exported) (x, export) ->
+      let rs = locate_ref x in
+      let exported' =
+        if export then
+          List.fold_left
+            (fun acc r -> KerName.Set.add (Table.repr_of_r r) acc)
+            exported rs
+        else exported
+      in
+      (refs @ rs, exported'))
+    ([], KerName.Set.empty) l
+
+(* Translate first, then write: on error, no (truncated) output file
+   is left *)
+let write_core_file ~modname ~exported ~file struc =
+  let contents = translate ~modname ~exported struc in
+  let oc = open_out file in
+  output_string oc contents;
+  close_out oc;
+  Feedback.msg_info Pp.(str ("Core Erlang extraction written to " ^ file))
+
 let coreerlang_extraction_file ~opaque_access f l =
-  let refs, exported =
-    List.fold_left
-      (fun (refs, exported) (x, export) ->
-        let rs = locate_ref x in
-        let exported' =
-          if export then
-            List.fold_left
-              (fun acc r -> KerName.Set.add (Table.repr_of_r r) acc)
-              exported rs
-          else exported
-        in
-        (refs @ rs, exported'))
-      ([], KerName.Set.empty) l
-  in
+  let refs, exported = refs_and_exported l in
   let struc = extract_structure ~opaque_access refs in
   (* the file is named after the module (erlc requires name and module
      to match); [basename] keeps it a single path component and any
@@ -93,9 +104,22 @@ let coreerlang_extraction_file ~opaque_access f l =
   let file =
     (if dir = "." then "" else dir ^ "/") ^ Ceprint.escape_atom base ^ ".core"
   in
-  (* translate first: on error, no (truncated) output file is left *)
-  let contents = translate ~modname ~exported struc in
-  let oc = open_out file in
-  output_string oc contents;
-  close_out oc;
-  Feedback.msg_info Pp.(str ("Core Erlang extraction written to " ^ file))
+  write_core_file ~modname ~exported ~file struc
+
+(* Separate extraction: no output-file argument; the module is named
+   after the Rocq module of the (first) extracted reference, and the
+   .core file is written to rocq's cwd. For now the whole extraction
+   closure still lands in that one module; per-home-module splitting
+   comes with the nested-modules work. *)
+let coreerlang_extraction_separate ~opaque_access l =
+  let refs, exported = refs_and_exported l in
+  let modname =
+    match refs with
+    | r :: _ -> Cerlang.Atom (ModPath.to_string (Table.modpath_of_r r))
+    | [] -> Cerlang.Atom "extracted"
+  in
+  let file =
+    (match modname with Cerlang.Atom n -> Ceprint.escape_atom n) ^ ".core"
+  in
+  let struc = extract_structure ~opaque_access refs in
+  write_core_file ~modname ~exported ~file struc

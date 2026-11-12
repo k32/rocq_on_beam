@@ -14,4 +14,4 @@ Definition predn (n : nat) : nat :=
 
 Definition three : nat := S (S (S O)).
 
-CoreErlang Extraction "nat" big predn three.
+CoreErlang Separate Extraction big predn three.

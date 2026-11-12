@@ -29,4 +29,4 @@ Definition apply_both (f : nat -> nat) (g : nat -> nat) (n : nat) : nat :=
 Definition twice_curried : nat -> nat :=
   apply_both (fun n => n + n) (fun n => S n).
 
-CoreErlang Extraction "curry" add12 succ_then_add2 map_add2 twice_curried.
+CoreErlang Separate Extraction add12 succ_then_add2 map_add2 twice_curried.

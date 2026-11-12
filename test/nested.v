@@ -27,4 +27,4 @@ Definition deep (n : nat) : nat :=
 Definition shadow (n : nat) : nat :=
   (fun n => n + nested 0) (n + 1).
 
-CoreErlang Extraction "nested" nested applied deep shadow.
+CoreErlang Separate Extraction nested applied deep shadow.

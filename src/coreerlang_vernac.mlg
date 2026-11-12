@@ -31,9 +31,15 @@ VERNAC COMMAND EXTEND CoreErlangExtraction CLASSIFIED AS QUERY STATE opaque_acce
 | [ "CoreErlang" "Extraction" export_spec(x) ] -> { coreerlang_extraction x }
 END
 
-(* Monolithic extraction to a Core Erlang file: writes a file to
-   disk, so it is classified as SIDEFF rather than QUERY. *)
+(* Monolithic extraction to a Core Erlang file *)
 VERNAC COMMAND EXTEND CoreErlangExtractionFile CLASSIFIED AS SIDEFF STATE opaque_access
 | [ "CoreErlang" "Extraction" string(f) ne_export_spec_list(l) ]
   -> { coreerlang_extraction_file f l }
+END
+
+(* Separate extraction: no output file; the module (and file) name
+   comes from the Rocq module of the extracted references *)
+VERNAC COMMAND EXTEND CoreErlangSeparateExtraction CLASSIFIED AS SIDEFF STATE opaque_access
+| [ "CoreErlang" "Separate" "Extraction" ne_export_spec_list(l) ]
+  -> { coreerlang_extraction_separate l }
 END
