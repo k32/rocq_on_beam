@@ -26,63 +26,65 @@ init(This) ->
   anvl_erlc:add_pre_compile_hook(
     This,
     fun(#{src_root := SrcRoot}) ->
+        %% only the extracted app's src dir holds the cores; the hook
+        %% is a no-op for the other apps of the project
         case filelib:is_file(
                filename:join([SrcRoot, "src", "extracted.app.src"])) of
-          true  -> precondition(cores_extracted(SrcRoot));
+          true  -> precondition(cores_extracted());
           false -> false
         end
     end).
 
-%% Repo root: the extracted app lives at <repo>/test/extracted
-%% (filename:join also normalizes the trailing "/." that src_root has)
-repo_root(SrcRoot) ->
-  filename:join([SrcRoot, "..", ".."]).
+%% Repo root: this is the root project
+repo_root() -> anvl_project:root_dir().
 
-theories_dir(SrcRoot) ->
-  filename:join(repo_root(SrcRoot), "_build/default/theories").
+theories_dir() ->
+  filename:join(repo_root(), "_build/default/theories").
 
-plugin_dir(SrcRoot) ->
-  filename:join([repo_root(SrcRoot), "test", "plugin"]).
+plugin_dir() ->
+  filename:join([repo_root(), "test", "plugin"]).
 
-test_dir(SrcRoot) -> filename:join(repo_root(SrcRoot), "test").
+test_dir() -> filename:join(repo_root(), "test").
 
-v_files(SrcRoot) ->
-  filelib:wildcard(filename:join(test_dir(SrcRoot), "*.v")).
+%% src dir of the `extracted' app: where rocq writes the .core files
+extracted_src_root() ->
+  filename:join([repo_root(), "test", "extracted", "src"]).
 
-?MEMO(build_inputs, RepoRoot,
+v_files() ->
+  filelib:wildcard(filename:join(test_dir(), "*.v")).
+
+?MEMO(build_inputs,
       begin
         %% Plugin + theories: dune decides what to rebuild
-        _ = anvl_lib:exec("dune", ["build"], [{cd, RepoRoot}]),
+        _ = anvl_lib:exec("dune", ["build"], [{cd, repo_root()}]),
         false
       end).
 
-%% Every test/<base>.v -> <extracted app>/src/<base>.core
-?MEMO(cores_extracted, SrcRoot,  %% SrcRoot doubles as the app anchor
+%% One test/<base>.v -> <extracted app>/src/<base>.core
+?MEMO(core_extracted, VFile,
       begin
-        _ = precondition(build_inputs(repo_root(SrcRoot))),
-        lists:foldl(
-          fun(VFile, Acc) ->
-              Base = filename:rootname(filename:basename(VFile)),
-              Core = filename:join([SrcRoot, "src", Base ++ ".core"]),
-              case anvl_lib:newer([VFile], Core) of
-                true ->
-                  %% rocq resolves the CoreErlang Extraction "base"
-                  %% argument relative to its cwd, so run it inside
-                  %% the src dir
-                  SrcDir = filename:join(SrcRoot, "src"),
-                  _ = anvl_lib:exec(
-                        "rocq",
-                        ["c", "-q",
-                         "-I", plugin_dir(SrcRoot),
-                         "-Q", theories_dir(SrcRoot), "Erlang",
-                         VFile],
-                        [{cd, SrcDir}]),
-                  true;
-                false ->
-                  Acc
-              end
-          end, false, v_files(SrcRoot))
+        _ = precondition(build_inputs()),
+        Core = filename:join(
+                 [extracted_src_root(),
+                  filename:rootname(filename:basename(VFile)) ++ ".core"]),
+        anvl_lib:newer(VFile, Core)
+          andalso begin
+            %% rocq resolves the CoreErlang Extraction "base" argument
+            %% relative to its cwd, so run it inside the src dir
+            _ = anvl_lib:exec(
+                  "rocq",
+                  ["c", "-q",
+                   "-I", plugin_dir(),
+                   "-Q", theories_dir(), "Erlang",
+                   VFile],
+                  [{cd, extracted_src_root()}]),
+            true
+          end
       end).
+
+%% All .v files extracted, one condition (and one rocq process) per file
+?MEMO(cores_extracted,
+      precondition([core_extracted(VFile) || VFile <- v_files()])).
 
 %% Compile both apps (in this order: the suites may call the
 %% extracted modules)
