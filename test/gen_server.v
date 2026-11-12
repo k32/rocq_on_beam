@@ -72,7 +72,7 @@ Module LIFO <: gen_server.
     match c with
     | c_pop => option nat
     | c_get_len => nat
-    | c_push _ => nat
+    | c_push _ => unit
     end.
 
   Definition t :=
@@ -109,7 +109,7 @@ Module LIFO <: gen_server.
     match call with
     | c_push n =>
         let s' := {| data := n :: d; len := l + 1 |} in
-        @c_reply t (c_push n) (l + 1) s'
+        @c_reply t (c_push n) tt s'
     | c_get_len =>
         @c_reply t c_get_len l s
     | c_pop =>
@@ -129,7 +129,7 @@ Module LIFO <: gen_server.
         @inf_noreply t s'
     end.
 
-  Definition push (server : ServerRef) (n : nat) : nat :=
+  Definition push (server : ServerRef) (n : nat) : unit :=
     @call t server (c_push n) infinity.
 
   Definition pop (server : ServerRef) : option nat :=
@@ -138,10 +138,10 @@ Module LIFO <: gen_server.
   Definition get_len (server : ServerRef) : nat :=
     @call t server c_get_len infinity.
 
-  Definition apush (server : ServerRef) (n : nat) : bool :=
+  Definition apush (server : ServerRef) (n : nat) : unit :=
     @cast t server (c_apush n).
 
-  Definition adrop (server : ServerRef) : bool :=
+  Definition adrop (server : ServerRef) : unit :=
     @cast t server c_adrop.
 End LIFO.
 

@@ -49,16 +49,16 @@ Inductive timeout_t : Set := timeout (n : nat) | infinity.
 (* This weird type serves two purposes:
    1. False makes it impossible to construct in Rocq,
       since gen_server implementation doesn't exist in its universe (yet)
-   2. nat prevents parameter from being optimized out
+   2. unit prevents it from being optimized out.
  *)
-Definition ServerRef := (nat * False)%type.
+Definition ServerRef : Set := (unit * False)%type.
 
 (* Placeholder shims for cenative translation. *)
 Definition call `{GenServerT} (server : ServerRef) (call : call_t) (timeout : timeout_t) : reply_t call :=
   match snd server with
   end.
 
-Definition cast `{GenServerT} (server : ServerRef) (cast : cast_t) : bool :=
+Definition cast `{GenServerT} (server : ServerRef) (cast : cast_t) : unit :=
   match snd server with
   end.
 
