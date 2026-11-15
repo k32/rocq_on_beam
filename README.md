@@ -59,6 +59,7 @@ erl -pa test_core -noshell -eval 'io:format("~p~n",[adder:add({\'S\',{\'S\',\'O\
 The output file is named after the module, which is what `erlc`
 expects.
 
+
 | Rocq             | Core Erlang                                        |
 |------------------|----------------------------------------------------|
 | function         | `'name'/n = fun (X,Y) -> ...`                 |

@@ -51,17 +51,21 @@ Inductive timeout_t : Set := timeout (n : nat) | infinity.
 (* This weird type serves two purposes:
    1. False makes it impossible to construct in Rocq,
       since gen_server implementation doesn't exist in its universe (yet)
-   2. unit prevents it from being optimized out.
+   2. Inductive wrapper places it in the Set universe,
+      so it doesn't get optimized out,
+      and makes it type-checkable.
  *)
-Definition ServerRef : Set := (unit * False)%type.
+Inductive ServerRef : Set := ServerRef_ : False -> ServerRef.
 
 (* Placeholder shims for cenative translation. *)
 Definition call `{GenServerT} (server : ServerRef) (call : call_t) (timeout : timeout_t) : reply_t call :=
-  match snd server with
+  match server with
+    ServerRef_ f => match f with end
   end.
 
 Definition cast `{GenServerT} (server : ServerRef) (cast : cast_t) : unit :=
-  match snd server with
+  match server with
+    ServerRef_ f => match f with end
   end.
 
 Section invariant_helpers.
@@ -114,7 +118,7 @@ Module Type gen_server_invariant (m : gen_server).
 End gen_server_invariant.
 
 (* Native call targets: the placeholders below lower to the OTP
-   gen_server adapter of the runtime app (see runtime/src); the
+   gen_server adapter of the runtime app (see shim/src); the
    trailing 1 drops the GenServerT dictionary argument. Declared here,
    they apply to every importer of this module. *)
 CoreErlang Native Call call := "rocq_gen_server:call/3" 1.
