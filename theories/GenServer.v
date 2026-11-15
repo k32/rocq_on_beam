@@ -1,3 +1,5 @@
+Declare ML Module "rocq-core-erlang".
+
 (* Opaque type for handle_call From parameter *)
 Class FromT {from_t : Set} :=
   {}.
@@ -110,3 +112,10 @@ Module Type gen_server_invariant (m : gen_server).
 
   Parameter handle_info_valid : handle_info_valid_t prop m.handle_info.
 End gen_server_invariant.
+
+(* Native call targets: the placeholders below lower to the OTP
+   gen_server adapter of the runtime app (see runtime/src); the
+   trailing 1 drops the GenServerT dictionary argument. Declared here,
+   they apply to every importer of this module. *)
+CoreErlang Native Call call := "rocq_gen_server:call/3" 1.
+CoreErlang Native Call cast := "rocq_gen_server:cast/2" 1.

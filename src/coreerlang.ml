@@ -52,6 +52,56 @@ let modname_of_qualid qid =
   | [] -> Cerlang.Atom "extracted"
 
 (* -------------------------------------------------------------------- *)
+(* Native call declaration                                               *)
+(* -------------------------------------------------------------------- *)
+
+(* Parse "module:function/arity", the Erlang side of a native call
+   declaration; [None] when malformed *)
+let parse_native_target s =
+  match (String.index_opt s ':', String.rindex_opt s '/') with
+  | Some i, Some j ->
+      if i > 0 && j > i + 1 then
+        let m = String.sub s 0 i in
+        let f = String.sub s (i + 1) (j - i - 1) in
+        let a = String.sub s (j + 1) (String.length s - j - 1) in
+        match int_of_string_opt a with
+        | Some arity when arity >= 0 ->
+            Some (Cerlang.Atom m, Cerlang.Atom f, arity)
+        | _ -> None
+      else None
+  | _ -> None
+
+(* CoreErlang Native Call r := "m:f/a" drop: applications of the Rocq
+   definition [r] extract as calls to the Erlang function [m:f/a]; the
+   [drop] leading Rocq arguments are dropped untranslated (e.g. a
+   typeclass dictionary), usually 0. The declaration travels with the
+   enclosing module: requiring it replays the entry. *)
+let coreerlang_native_call r s drop =
+  let loc = r.CAst.loc in
+  match parse_native_target s with
+  | None ->
+      CErrors.user_err ?loc
+        Pp.(
+          str "CoreErlang extraction: invalid native call target " ++ qs s
+          ++ str ": expected \"module:function/arity\"")
+  | Some (m, f, arity) ->
+      if drop < 0 then
+        CErrors.user_err ?loc
+          Pp.(
+            str
+              "CoreErlang extraction: the number of dropped arguments must \
+               not be negative")
+      else
+        match Smartlocate.global_with_alias r with
+        | GlobRef.ConstRef _ as gr -> Cenative.declare_native_call gr m f arity drop
+        | (IndRef _ | ConstructRef _ | VarRef _) as gr ->
+            CErrors.user_err ?loc
+              Pp.(
+                str "CoreErlang extraction: the native call target of "
+                ++ Nametab.pr_global_env Id.Set.empty gr
+                ++ str " must be a definition (constant)")
+
+(* -------------------------------------------------------------------- *)
 (* The vernacular entry points                                          *)
 (* -------------------------------------------------------------------- *)
 

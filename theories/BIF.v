@@ -5,7 +5,10 @@
 (* the LibTx Storage class (through its interface, via the list         *)
 (* instance).                                                            *)
 
+Declare ML Module "rocq-core-erlang".
+
 From Stdlib Require Import List Classes.EquivDec.
+From Stdlib Require ZArith.
 From LibTx Require Import Storage.Classes Storage.Instances.List.
 Require Import Types EqDecNat.
 Import ListNotations.
@@ -71,3 +74,50 @@ Definition fold (A : Type) (f : K -> V -> A -> A) (acc : A) (s : @t K V) : A :=
 End HMap.
 
 End HMap.
+
+(* Native call targets: applications of these definitions extract as
+   calls to the Erlang functions given as "module:function/arity"; the
+   trailing integer counts leading Rocq arguments dropped untranslated
+   (the EqDec dictionary of the HMap methods), 0 for none. Declared
+   here, they apply to every importer of this module. *)
+
+CoreErlang Native Call HMap.put := "maps:put/3" 1.
+CoreErlang Native Call HMap.find := "maps:find/2" 1.
+CoreErlang Native Call HMap.remove := "maps:remove/2" 1.
+CoreErlang Native Call HMap.keys := "maps:keys/1" 1.
+CoreErlang Native Call HMap.fold := "maps:fold/3" 1.
+(* HMap.make stays handwired in the plugin: it lowers to the fixed
+   value #{}, which no native call expresses. *)
+
+(* The plain Z operations -> erlang BIFs. The same operations exist
+   under three names (the canonical Corelib definition, the Stdlib
+   re-export, and the Stdlib-internal path); which one a term
+   references depends on how ZArith was imported, so all three are
+   declared. The unary opp/pred/succ and the of_nat/to_nat conversions
+   stay handwired in the plugin (synthetic BIF operands / identity). *)
+CoreErlang Native Call Corelib.BinNums.IntDef.Z.add := "erlang:+/2" 0.
+CoreErlang Native Call Corelib.BinNums.IntDef.Z.sub := "erlang:-/2" 0.
+CoreErlang Native Call Corelib.BinNums.IntDef.Z.mul := "erlang:*/2" 0.
+CoreErlang Native Call Corelib.BinNums.IntDef.Z.max := "erlang:max/2" 0.
+CoreErlang Native Call Corelib.BinNums.IntDef.Z.min := "erlang:min/2" 0.
+CoreErlang Native Call Corelib.BinNums.IntDef.Z.eqb := "erlang:=:=/2" 0.
+CoreErlang Native Call Corelib.BinNums.IntDef.Z.leb := "erlang:=</2" 0.
+CoreErlang Native Call Corelib.BinNums.IntDef.Z.ltb := "erlang:</2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinIntDef.Z.add := "erlang:+/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinIntDef.Z.sub := "erlang:-/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinIntDef.Z.mul := "erlang:*/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinIntDef.Z.max := "erlang:max/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinIntDef.Z.min := "erlang:min/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinIntDef.Z.abs := "erlang:abs/1" 0.
+CoreErlang Native Call Stdlib.ZArith.BinIntDef.Z.eqb := "erlang:=:=/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinIntDef.Z.leb := "erlang:=</2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinIntDef.Z.ltb := "erlang:</2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinInt.Z.add := "erlang:+/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinInt.Z.sub := "erlang:-/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinInt.Z.mul := "erlang:*/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinInt.Z.max := "erlang:max/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinInt.Z.min := "erlang:min/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinInt.Z.abs := "erlang:abs/1" 0.
+CoreErlang Native Call Stdlib.ZArith.BinInt.Z.eqb := "erlang:=:=/2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinInt.Z.leb := "erlang:=</2" 0.
+CoreErlang Native Call Stdlib.ZArith.BinInt.Z.ltb := "erlang:</2" 0.

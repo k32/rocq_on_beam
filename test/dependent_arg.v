@@ -1,6 +1,8 @@
 Declare ML Module "rocq-core-erlang".
 
 From Stdlib Require Import ZArith.
+(* loads the native-call declarations for the Z operations *)
+From Erlang Require Import BIF.
 Open Scope Z_scope.
 
 (* A dependently typed "command" datatype: the return type of doit is

@@ -151,7 +151,7 @@ let translate_funs ?(exported = KerName.Set.empty)
   let { mg_name = m; mg_decls = decls } = mgroup in
   let funcs =
     List.concat_map (fundefs_of_decl is_exported) decls
-    |> List.filter (fun fd -> not (Cenative.is_erlangbif_kn fd.fd_kn))
+    |> List.filter (fun fd -> not (Cenative.is_native_kn fd.fd_kn))
     |> List.map (fun fd ->
         (match fd.fd_name with Cerlang.Atom n -> Cetrans.current_function := n);
         let ctx =
@@ -222,13 +222,13 @@ let translate_structure ~(modname : Cerlang.atom)
       List.iter
         (fun d ->
           match d with
-          | Dterm (r, body, _) when not (Cenative.is_erlangbif r) ->
+          | Dterm (r, body, _) when not (Cenative.is_native_global r) ->
               funs :=
                 KerName.Map.add (Table.repr_of_r r)
                   (m, Cetrans.global_name r, Cetrans.count_lams body)
                   !funs
           | Dfix (rv, defs, _)
-            when not (Array.exists Cenative.is_erlangbif rv) ->
+            when not (Array.exists Cenative.is_native_global rv) ->
               Array.iteri
                 (fun j r ->
                   let a =

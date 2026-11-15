@@ -21,7 +21,26 @@ CoreErlang Extraction "adder" add.
 (* separate extraction: no output-file argument; the module (and
    file) name comes from the Rocq module of the references *)
 CoreErlang Separate Extraction add.
+
+(* map a Rocq definition onto a native Erlang function: applications
+   of [ref] extract as calls to module:function/arity; the trailing
+   integer counts leading Rocq arguments dropped untranslated (e.g. a
+   typeclass dictionary), 0 if none *)
+CoreErlang Native Call ref := "erlang_module:erlang_function/2" 0.
 ```
+
+Native call declarations are ordinary library content: they travel
+with the module they are declared in (requiring it re-declares them),
+they are rolled back by `Back` like other vernacular state, and a
+later declaration for the same definition wins. The support library
+uses them for its own bindings — e.g. `From Erlang Require Import BIF.`
+brings the `HMap` → `maps` and `Z` → `erlang` BIF mappings, and
+`GenServer` maps its `call`/`cast` placeholders onto the
+`rocq_gen_server` runtime adapter. The few targets no plain call can
+express (the unary `Z.opp`/`Z.pred`/`Z.succ` rendered with a synthetic
+BIF operand, the identity conversions `Z.of_nat`/`Z.to_nat`, and the
+`HMap.make` empty-map value) remain handwired in the plugin and can be
+overridden by a declaration.
 
 By default every listed reference is exported (its dependencies are
 pulled in but stay internal). A reference marked
@@ -45,7 +64,7 @@ expects.
 | function         | `'name'/n = fun (X,Y) -> ...`                 |
 | inductive        | constructors become tagged tuples or atoms         |
 | `nat`            | native integers: `0`, `N`; `S x` → `x+1`; matches use `<0>` / `when N > 0` + predecessor `let`; literal `S`-chains fold |
-| `Z` (ZArith)     | native integers: literals fold (exact, arbitrary precision); `Z.add/sub/mul/max/min/opp/pred/succ/abs/eqb/leb/ltb/of_nat/to_nat` map to Erlang BIFs (`opp`/`pred`/`succ` are unary in Rocq but binary BIFs, so the missing operand is supplied synthetically: `0 - X`, `X - 1`, `X + 1`); user matches on `Z0/Zpos/Zneg` rewrite to guarded clauses |
+| `Z` (ZArith)     | native integers: literals fold (exact, arbitrary precision); `Z.add/sub/mul/max/min/opp/pred/succ/abs/eqb/leb/ltb/of_nat/to_nat` map to Erlang BIFs (`opp`/`pred`/`succ` are unary in Rocq but binary BIFs, so the missing operand is supplied synthetically: `0 - X`, `X - 1`, `X + 1`); user matches on `Z0/Zpos/Zneg` rewrite to guarded clauses. The plain ops are `CoreErlang Native Call` entries declared in `Erlang.BIF` (so a `From Erlang Require Import BIF.` is needed for them) |
 | prim. `float`    | native float literals                              |
 | `list`           | native lists: `[]` / `[H\|T]`                      |
 | `prod`           | native untagged tuple `{X, Y}`                     |
@@ -115,11 +134,13 @@ A full worked example lives in `test/typeclass.v` and
 
 A small support library ships with the plugin under `theories/`
 (logical name `Erlang`): `Runtime` (markers), `BIF` (the `HMap`
-interface), `Types` (`MapFindResult`), `EqDecNat` (an EqDec instance
+interface, plus the native call declarations for the `HMap` and `Z`
+operations), `Types` (`MapFindResult`), `EqDecNat` (an EqDec instance
 for `nat`), `GenServer` (a gen_server module type: `init`/
 `handle_cast`/`handle_call`/`handle_info` with tagged result
 values). `From Erlang Require Import BIF.` brings the native map
-operations in. The Erlang side of the runtime lives in `runtime/`
+operations (and the Z → BIF mappings) in. The Erlang side of the
+runtime lives in `runtime/`
 (the `erlang_runtime` app): `rocq_gen_server` adapts extracted
 gen_server callbacks to the OTP behaviour, translating the result
 constructors (`'i_ok'` → `{ok, State}`, `'c_reply'` → `{reply,
@@ -169,7 +190,7 @@ erl -pa test_core -noshell -eval 'eunit:test([rich_tests], [verbose])' -s init s
 ## Layout
 
 - `src/cerlang.ml` — the Core Erlang AST (`expr`, `pattern`, `fundef`, `module_`)
-- `src/cenative.ml` — native type lowering: constructor registry (list/pair/nat/Z/positive), literal folding, Z op → BIF table, constructor/pattern/match-branch rewrites
+- `src/cenative.ml` — native type lowering: constructor registry (list/pair/nat/Z/positive), literal folding, the user-extensible `CoreErlang Native Call` hash table (+ its handwired residue: synthetic-operand BIFs, identity conversions, fixed values), constructor/pattern/match-branch rewrites
 - `src/cetrans.ml` — term translation: MiniML → Core Erlang AST (de Bruijn resolution, eta-expansion, fixpoints); queries `Cenative` for all native decisions
 - `src/cemodule.ml` — structure/module layer: walks the MiniML structure, fun maps, module assembly; drives `Cetrans`
 - `src/ceprint.ml` — phase 2: Core Erlang AST → concrete syntax (pure pretty-printing, including integer/float literal rendering)

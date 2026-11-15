@@ -43,3 +43,14 @@ VERNAC COMMAND EXTEND CoreErlangSeparateExtraction CLASSIFIED AS SIDEFF STATE op
 | [ "CoreErlang" "Separate" "Extraction" ne_export_spec_list(l) ]
   -> { coreerlang_extraction_separate l }
 END
+
+(* Declare a native call target for a Rocq definition: applications of
+   the definition extract as calls to the Erlang function
+   "module:function/arity"; the trailing integer counts leading Rocq
+   arguments dropped untranslated (e.g. a typeclass dictionary), 0 if
+   none. Declarations are recorded in the library (entries of a
+   required theory apply here) and rolled back by Back. *)
+VERNAC COMMAND EXTEND CoreErlangNativeCall CLASSIFIED AS SIDEFF
+| [ "CoreErlang" "Native" "Call" global(r) ":=" string(s) integer(d) ]
+  -> { coreerlang_native_call r s d }
+END

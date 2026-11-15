@@ -8,13 +8,16 @@ module Table = Extraction_plugin.Table
 (*  everything about that mapping:                                       *)
 (*    - the registry of the constructors involved (by GlobRef),          *)
 (*    - literal folding,                                                 *)
-(*    - the wholesale rewrite of Z library operations to BIFs,           *)
+(*    - the table of native call targets (Erlang functions standing in   *)
+(*      for Rocq definitions), user-extensible via the vernac            *)
+(*      [CoreErlang Native Call ...] (see below),                        *)
 (*    - constructor / pattern / match-branch translation for the         *)
 (*      lowered types.                                                   *)
 (*                                                                       *)
-(*  The mapping is fixed (Erlang has no user-definable types), so it is  *)
-(*  hardwired here instead of reusing [Extract Inductive]-style          *)
-(*  configuration.                                                       *)
+(*  The type mapping is fixed (Erlang has no user-definable types), so   *)
+(*  it is hardwired here instead of reusing [Extract Inductive]-style    *)
+(*  configuration; the call table is data, declared alongside the        *)
+(*  definitions it replaces (theories/BIF.v, theories/GenServer.v).      *)
 (*                                                                       *)
 (*  [cetrans] queries this module ([is_*] predicates, [constructor],     *)
 (*  [pattern], [rewrite_branch], [zop_of]) and passes control; it never  *)
@@ -354,33 +357,29 @@ let is_native_branch (pat : ml_pattern) =
   rewrite_branch (Cerlang.Var 0) pat None <> None
 
 (* -------------------------------------------------------------------- *)
-(* Z library functions -> Erlang BIFs.                                   *)
+(* Remote calls: what a global constant becomes natively.                *)
 (*                                                                       *)
-(* We are not interested in Z's internal representation: the standard   *)
-(* operations are mapped wholesale to native Erlang calls, and literals *)
-(* fold to integers. If some other Z function recurses structurally on  *)
-(* the representation, its (shallow) matches are rewritten with guards; *)
-(* anything left fails loudly via badmatch.                              *)
+(* Purely a data question: a global maps to a native call target         *)
+(* (module, function, arity, number of leading ML arguments to drop      *)
+(* untranslated -- e.g. an EqDec dictionary) or a fixed value.           *)
+(* Currying/eta handling is NOT done here; [cetrans] owns the single     *)
+(* application engine and renders fully-applied calls via                *)
+(* [render_call].  A global with a target (of any kind) is never         *)
+(* emitted as a fundef.                                                  *)
 (*                                                                       *)
-(* Both the canonical constants (Corelib.BinNums.IntDef.Z) and their
-   Stdlib wrappers (Stdlib.ZArith.BinInt.Z) are matched: they are
-   distinct constants, and which one a term references depends on
-   whether the user imported Corelib or Stdlib. The internal Stdlib
-   definitions (Stdlib.ZArith.BinIntDef.Z) are matched as well. *)
-(* -------------------------------------------------------------------- *)
-
-(* -------------------------------------------------------------------- *)
-(* Remote calls: what a global constant becomes natively.               *)
-(*                                                                      *)
-(* Purely a data question: [global_target] maps a global to a native    *)
-(* call target (module, function, arity, number of leading arguments    *)
-(* to drop untranslated -- the EqDec dictionary) or a fixed value.      *)
-(* Currying/eta handling is NOT done here; [cetrans] owns the single    *)
-(* application engine and renders fully-applied calls via               *)
-(* [render_call].                                                       *)
-(*                                                                      *)
-(* Z.compare and Nat.eq_dec have no entries (dropped for now); usage    *)
-(* shows up as an unextracted-constant error in the translation.        *)
+(* Sources of targets, in priority order:                                *)
+(*  1. the user-extensible hash table below, updated by the vernac       *)
+(*       CoreErlang Native Call <def> := "module:function/arity" drop.   *)
+(*     ([Cenative.declare_native_call]; plain calls only), declared in   *)
+(*     the theories (BIF.v, GenServer.v) next to the definitions they    *)
+(*     replace, and usable for any user definition;                      *)
+(*  2. a handwired fallback for the few entries that command cannot      *)
+(*     express: unary Z operations rendered as binary BIF calls with     *)
+(*     a synthetic operand, conversions that are the identity, and a     *)
+(*     fixed value.                                                      *)
+(*                                                                       *)
+(* Z.compare and Nat.eq_dec have no entries; usage shows up as an        *)
+(* unextracted-constant error in the translation.                        *)
 (* -------------------------------------------------------------------- *)
 
 type target =
@@ -396,90 +395,109 @@ type target =
   | NotNative
 
 (* -------------------------------------------------------------------- *)
-(* Per-family global classification, by plain pattern matching on the   *)
-(* global's (label, module path); no lists, no searching.               *)
+(* The user-extensible native call table.                               *)
 (* -------------------------------------------------------------------- *)
 
-let call m f arity = NativeCall (Cerlang.Atom m, Cerlang.Atom f, arity, 0)
-let call_drop m f arity = NativeCall (Cerlang.Atom m, Cerlang.Atom f, arity, 1)
+(* the payload of one user-declared native call *)
+type native_call = {
+  nc_module : Cerlang.atom;
+  nc_function : Cerlang.atom;
+  nc_arity : int;
+  nc_drop : int; (* leading ML arguments dropped untranslated *)
+}
 
-(* Z library functions -> erlang BIFs *)
-let global_to_z (r : global) : target option =
-  let l = Id.to_string (Table.label_of_r r) in
-  let m = ModPath.to_string (Table.modpath_of_r r) in
-  let z_mod =
-    match m with
-    | "Corelib.BinNums.IntDef.Z" | "Stdlib.ZArith.BinIntDef.Z"
-    | "Stdlib.ZArith.BinInt.Z" ->
-        true
-    | _ -> false
-  in
-  match (l, z_mod) with
-  | ("add" | "sub" | "mul"), true ->
-      Some
-        (call "erlang"
-           (match l with "add" -> "+" | "sub" -> "-" | _ -> "*")
-           2)
-  | ("max" | "min"), true -> Some (call "erlang" l 2)
-  | "succ", true ->
-      Some
-        (NativeCall2
-           (Cerlang.Atom "erlang", Cerlang.Atom "+", Cerlang.EInt Z.one, false))
-      (* X + 1 *)
-  | ("opp" | "pred"), true ->
-      (* both are unary ML functions but the BIF '-' is binary: supply the
-       missing operand synthetically (opp -> 0 - X, pred -> X - 1) *)
-      Some
-        (NativeCall2
-           ( Cerlang.Atom "erlang",
-             Cerlang.Atom "-",
-             (match l with
-             | "opp" -> Cerlang.EInt Z.zero
-             | _ -> Cerlang.EInt Z.one),
-             l = "opp" ))
-  | "abs", true -> Some (call "erlang" "abs" 1)
-  | "eqb", true -> Some (call "erlang" "=:=" 2)
-  | "leb", true -> Some (call "erlang" "=<" 2)
-  | "ltb", true -> Some (call "erlang" "<" 2)
-  | ("of_nat" | "to_nat"), true -> Some NativeIdentity (* both are integers *)
-  | _ -> None
+(* The table itself: kernel name (universe-instance independent, as
+    [Table.repr_of_r]) -> call. A hash table because it is looked up
+    for every global application during translation. *)
+module KnHashtbl = Hashtbl.Make (KerName)
 
-(* ErlangBIF.HMap methods -> maps module calls; the EqDec dictionary
-   (leading argument) is dropped untranslated *)
-let global_to_map (r : global) : target option =
-  match
-    (Id.to_string (Table.label_of_r r), ModPath.to_string (Table.modpath_of_r r))
-  with
-  | "put", "Erlang.BIF.HMap" -> Some (call_drop "maps" "put" 3)
-  | "find", "Erlang.BIF.HMap" -> Some (call_drop "maps" "find" 2)
-  | "remove", "Erlang.BIF.HMap" -> Some (call_drop "maps" "remove" 2)
-  | "keys", "Erlang.BIF.HMap" -> Some (call_drop "maps" "keys" 1)
-  | "fold", "Erlang.BIF.HMap" -> Some (call_drop "maps" "fold" 3)
-  | "make", "Erlang.BIF.HMap" -> Some (NativeValue (Cerlang.EMap []))
-  | _ -> None
+let native_calls : native_call KnHashtbl.t = KnHashtbl.create 64
 
-let global_to_gen_server (r : global) : target option =
-  match
-    (Id.to_string (Table.label_of_r r), ModPath.to_string (Table.modpath_of_r r))
-  with
-  | "call", "Erlang.GenServer" ->
-     Some (NativeCall (Cerlang.Atom "rocq_gen_server", Cerlang.Atom "call", 3, 1))
-  | "cast", "Erlang.GenServer" ->
-     Some (NativeCall (Cerlang.Atom "rocq_gen_server", Cerlang.Atom "cast", 2, 1))
-  | _ ->
-     None
+(* The table is plugin-global mutable state: declare it to the summary
+   so that backtracking (Back, reset) rolls declarations back, like the
+   tables of the standard extraction. *)
+let () =
+  Summary.declare_summary "CoreErlangNativeCalls"
+    {
+      Summary.stage = Summary.Stage.Interp;
+      freeze_function =
+        (fun () -> KnHashtbl.fold (fun kn nc acc -> (kn, nc) :: acc) native_calls []);
+      unfreeze_function =
+        (fun l ->
+          KnHashtbl.reset native_calls;
+          List.iter (fun (kn, nc) -> KnHashtbl.replace native_calls kn nc) l);
+      init_function = (fun () -> KnHashtbl.reset native_calls);
+    }
 
-(* the combined classification *)
-let global_target (r : global) : target =
-  match global_to_z r with
-  | Some t -> t
-  | None ->
-     match global_to_map r with
-     | Some t -> t
-     | None ->
-        match global_to_gen_server r with
-        | Some t -> t
-        | None -> NotNative
+(* the table key of a global reference: its kernel name *)
+let kn_of_gr (gr : GlobRef.t) : KerName.t =
+  Table.repr_of_r { glob = gr; inst = InfvInst.empty }
+
+(* Persistence: one library object per declaration. Its cache is
+   replayed when the enclosing module is Required, so entries declared
+   in the theories (BIF.v, GenServer.v) apply to every importer. *)
+let native_call_entry : (GlobRef.t * native_call) -> Libobject.obj =
+  Libobject.declare_object
+  @@ Libobject.superglobal_object "CoreErlang Native Call"
+       ~cache:(fun (gr, nc) -> KnHashtbl.replace native_calls (kn_of_gr gr) nc)
+       ~subst:
+         (Some (fun (s, (gr, nc)) -> (Globnames.subst_global_reference s gr, nc)))
+       ~discharge:(fun x -> Some x)
+
+(* the vernac entry (see coreerlang.ml): register an entry and record
+   it in the current library segment *)
+let declare_native_call (gr : GlobRef.t) m f arity drop =
+  Lib.add_leaf
+    (native_call_entry
+       (gr, { nc_module = m; nc_function = f; nc_arity = arity; nc_drop = drop }))
+
+(* -------------------------------------------------------------------- *)
+(* The handwired fallback: targets the vernac command cannot express,  *)
+(* by plain pattern matching on the kernel name's (label, module path).*)
+(* -------------------------------------------------------------------- *)
+
+let is_z_modpath m =
+  match m with
+  | "Corelib.BinNums.IntDef.Z" | "Stdlib.ZArith.BinIntDef.Z"
+  | "Stdlib.ZArith.BinInt.Z" ->
+      true
+  | _ -> false
+
+let handwired_target (kn : KerName.t) : target option =
+  let l = Id.to_string (KerName.label kn) in
+  let m = ModPath.to_string (KerName.modpath kn) in
+  if is_z_modpath m then
+    (* Z library residue: unary ML functions whose BIF is binary get a
+       synthetic operand (succ -> X + 1, opp -> 0 - X, pred -> X - 1);
+       of_nat / to_nat are the identity, both sides being integers *)
+    match l with
+    | "succ" ->
+        Some
+          (NativeCall2
+             (Cerlang.Atom "erlang", Cerlang.Atom "+", Cerlang.EInt Z.one, false))
+    | "opp" ->
+        Some
+          (NativeCall2
+             (Cerlang.Atom "erlang", Cerlang.Atom "-", Cerlang.EInt Z.zero, true))
+    | "pred" ->
+        Some
+          (NativeCall2
+             (Cerlang.Atom "erlang", Cerlang.Atom "-", Cerlang.EInt Z.one, false))
+    | "of_nat" | "to_nat" -> Some NativeIdentity
+    | _ -> None
+  else
+    match (l, m) with
+    | "make", "Erlang.BIF.HMap" -> Some (NativeValue (Cerlang.EMap []))
+    | _ -> None
+
+(* the combined classification, by kernel name *)
+let kn_target (kn : KerName.t) : target =
+  match KnHashtbl.find_opt native_calls kn with
+  | Some nc -> NativeCall (nc.nc_module, nc.nc_function, nc.nc_arity, nc.nc_drop)
+  | None -> (
+      match handwired_target kn with Some t -> t | None -> NotNative)
+
+let global_target (r : global) : target = kn_target (Table.repr_of_r r)
 
 (* arity of the native call, if this global is one *)
 let call_arity r =
@@ -501,14 +519,9 @@ let render_call t args =
   | _ ->
      failwith "unknown native call"
 
-(* is this global one of the ErlangBIF definitions (never emitted as
-   fundefs)? -- exactly the map family above *)
-let is_erlangbif r = match global_to_map r with Some _ -> true | None -> false
+(* is this global one with a native target (table or handwired)? Such
+   definitions are never emitted as fundefs: every use of them renders
+   as the native call / value itself *)
+let is_native_global r = global_target r <> NotNative
 
-let is_erlangbif_kn kn =
-  match
-    (Id.to_string (KerName.label kn), ModPath.to_string (KerName.modpath kn))
-  with
-  | ("put" | "find" | "remove" | "keys" | "fold" | "make"), "Erlang.BIF.HMap" ->
-      true
-  | _ -> false
+let is_native_kn kn = kn_target kn <> NotNative
