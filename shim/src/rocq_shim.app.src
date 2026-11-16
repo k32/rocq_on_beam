@@ -1,0 +1,5 @@
+{application, rocq_shim,
+ [{description, "Erlang runtime support for Rocq"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications, [kernel, stdlib]}]}.

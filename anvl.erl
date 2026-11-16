@@ -105,10 +105,10 @@ bases() ->
             [{application, list_to_atom(Base),
               [{description, "Extracted Core Erlang modules"},
                {vsn, "0.1.0"}, {registered, []},
-               %% erlang_runtime: the Erlang-side support modules
+               %% rocq_shim: the Erlang-side support modules
                %% (e.g. the gen_server shim) reach the test nodes'
                %% code path via the application closure
-               {applications, [kernel, stdlib, eunit, erlang_runtime]}]}]),
+               {applications, [kernel, stdlib, eunit, rocq_shim]}]}]),
         changed_write(filename:join(SrcDir, Base ++ ".app.src"),
                       unicode:characters_to_binary(AppSrc)),
         %% the eunit suite of the test (named <base>_suite: the
