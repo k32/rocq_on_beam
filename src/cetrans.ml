@@ -3,7 +3,7 @@
 (*  Erlang AST (Cerlang).                                                *)
 (*                                                                       *)
 (*  This phase resolves all names: de Bruijn indices (1-based in MiniML) *)
-(*  become Core Erlang variables, globals become function references,    *)
+(*  become Erlang variables, globals become function references,    *)
 (*  and constructors become atoms / tagged tuples. The result contains   *)
 (*  no MiniML- or Rocq-specific constructs.                              *)
 (*-----------------------------------------------------------------------*)
@@ -52,7 +52,7 @@ let marker_exn = Cerlang.Atom "$rocq_exn"
 let marker_dummy = Cerlang.Atom "$rocq_dummy"
 let marker_axiom = Cerlang.Atom "$rocq_axiom"
 
-(* The Core Erlang backend bypasses Rocq's custom-extraction machinery
+(* The Erlang backend bypasses Rocq's custom-extraction machinery
    (its slots hold target-language source strings, which we would have
    to parse back); native lowerings are hardwired instead. Make any
    user-issued custom extraction fail loudly rather than be silently
@@ -65,7 +65,7 @@ let check_custom r what =
         str "Erlang extraction: " ++ what
         ++ str " has a custom extraction"
         ++ str " (Extract Constant / Inlined Constant / Inductive), which the"
-        ++ str " Core Erlang backend does not support: "
+        ++ str " Erlang backend does not support: "
         ++ Id.print (Table.label_of_r r))
 
 (* -------------------------------------------------------------------- *)
@@ -99,7 +99,7 @@ let count_lams =
   let rec c = function MLlam (_, b) -> 1 + c b | _ -> 0 in
   c
 
-(* All Core Erlang variables in a function are identified by unique
+(* All Erlang variables in a function are identified by unique
    integers from a single per-function counter; the printer turns them
    into names ([_v1], [_v2], ...). Since the counter only ever
    increases, identifiers are unique within the function and can
@@ -134,7 +134,7 @@ let eta_info what =
 
    MLrel n (1-based) denotes the n-th enclosing binder:
      - a plain variable  -> the variable name
-     - a fixpoint member -> the function reference 'f'/n, which in Core
+     - a fixpoint member -> the function reference 'f'/n, which in
        Erlang is a first-class value usable with [apply] *)
 let trans_var ctx n =
   match List.nth_opt ctx.env (n - 1) with
@@ -146,7 +146,7 @@ let trans_var ctx n =
 (* -------------------------------------------------------------------- *)
 (* The single application engine.                                        *)
 (*                                                                       *)
-(* MiniML is curried, Core Erlang is not; every callee is described by  *)
+(* MiniML is curried, Erlang is not; every callee is described by  *)
 (* its uncurried arity (and, for native calls, how many leading ML      *)
 (* arguments to drop untranslated), and this one place decides between  *)
 (* a direct call, eta-expansion (too few arguments) and a curried       *)
@@ -339,7 +339,7 @@ and trans_global ctx r =
               ++ str "."
               ++ str (Id.to_string (Table.label_of_r r))))
 
-(* A (possibly n-ary) MiniML lambda becomes an uncurried Core Erlang fun:
+(* A (possibly n-ary) MiniML lambda becomes an uncurried Erlang fun:
      [MLlam (x1,...MLlam (xn, body)...)]
         -> [fun (_x1,...,_xn) -> body]
    The nested lambdas are collected with [Mlutil.collect_lams] (which
@@ -456,7 +456,7 @@ and trans_constructor ctx r args =
    [names] holds fresh variables for the branch idents, in ident order;
    [Prel n] denotes the n-th ident from the end (Prel 1 = last). *)
 and trans_case ctx t branches =
-  (* Core Erlang clauses need a guard, so every branch gets [when ...]
+  (* Erlang clauses need a guard, so every branch gets [when ...]
      (usually just ['true']). The scrutinee is let-bound so that the
      fallback clause (below) can name it. Note: the scrutinee is NOT an
      implicit binder for the branch bodies in MiniML, so the branches
@@ -473,7 +473,7 @@ and trans_case ctx t branches =
       Pp.(
         str "Erlang extraction: this match has a custom match extraction"
         ++ str " (Extract Inductive ... with a match function), which the"
-        ++ str " Core Erlang backend does not support");
+        ++ str " Erlang backend does not support");
   let guard_true = Cenative.guard_true in
   let bs =
     Array.to_list branches
@@ -559,7 +559,7 @@ and trans_expr ctx a =
   | MLfloat f -> EFloat (Float64.to_float f)
   | MLstring s -> EBinary (Pstring.to_string s) (* native: binary *)
   | MLparray (arr, _) ->
-      (* arrays do not exist in Core Erlang: degraded to a tuple *)
+      (* arrays do not exist in Erlang: degraded to a tuple *)
       ETuple (Array.to_list arr |> List.map (trans_expr ctx))
 
 and trans_pattern pat names =

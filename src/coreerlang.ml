@@ -1,10 +1,10 @@
 (*-----------------------------------------------------------------------
-  Minimal extraction of Rocq terms to Core Erlang.
+  Erlang Extraction Plugin
 
   Pipeline (two phases):
     1. [Cetrans] : Rocq's MiniML (from the standard extraction
-       internals) -> Core Erlang AST ([Cerlang])
-    2. [Ceprint] : Core Erlang AST -> concrete syntax accepted by erlc
+       internals) -> Erlang AST ([Cerlang])
+    2. [Ceprint] : Erlang AST -> concrete syntax accepted by erlc
 
   This module only drives Rocq: locate references, run the extraction
   environment, and print / write the result.
@@ -120,7 +120,7 @@ let erlang_extraction ~opaque_access (x, exported) =
   match translate ~modname:(modname_of_qualid x) ~exported struc with
   | s :: _ -> Feedback.msg_notice Pp.(str s)
   | [] ->
-      Feedback.msg_notice Pp.(str "Core Erlang extraction: nothing to extract")
+      Feedback.msg_notice Pp.(str "Erlang extraction: nothing to extract")
 
 (* Collect (refs, exported kernel names, explicitly internal kernel
    names) from a reference list: [noexport(...)] marks internal *)
@@ -146,29 +146,29 @@ let refs_and_exported l =
 
 (* Write one rendered module to [file]. Translate first, then write:
    on error, no (truncated) output file is left *)
-let dump_core_file file contents =
+let dump_erl_file file contents =
   let oc = open_out file in
   output_string oc contents;
   close_out oc;
-  Feedback.msg_info Pp.(str ("Core Erlang extraction written to " ^ file))
+  Feedback.msg_info Pp.(str ("Erlang extraction written to " ^ file))
 
-(* Write every non-empty module of the structure, one .core file per
+(* Write every non-empty module of the structure, one .erl file per
    module, named after the module (erlc requires name and module to
    match); empty modules (nothing extracted into them) are skipped.
    [file_of] maps a module name to its output file. *)
-let write_core_modules ~modname ~exported ?(internal = KerName.Set.empty)
+let write_erl_modules ~modname ~exported ?(internal = KerName.Set.empty)
     ?(mode = Cemodule.Monolithic) ~file_of struc =
   let mods =
     Cemodule.translate_structure ~modname ~exported ~internal ~mode struc
   in
   match List.filter (fun m -> m.Cerlang.mod_funcs <> []) mods with
   | [] ->
-      Feedback.msg_info Pp.(str "Core Erlang extraction: nothing to extract")
+      Feedback.msg_info Pp.(str "Erlang extraction: nothing to extract")
   | mods ->
       List.iter
         (fun m ->
           let file = file_of m.Cerlang.mod_name in
-          dump_core_file file (Ceprint.string_of_module m))
+          dump_erl_file file (Ceprint.string_of_module m))
         mods
 
 let erlang_extraction_file ~opaque_access f l =
@@ -181,16 +181,16 @@ let erlang_extraction_file ~opaque_access f l =
   let modname = Cerlang.Atom base in
   let dir = Filename.dirname f in
   let file =
-    (if dir = "." then "" else dir ^ "/") ^ Ceprint.escape_atom base ^ ".core"
+    (if dir = "." then "" else dir ^ "/") ^ Ceprint.escape_atom base ^ ".erl"
   in
   (* monolithic: exactly one module, named after the requested file *)
   match translate ~modname ~exported struc with
-  | contents :: _ -> dump_core_file file contents
+  | contents :: _ -> dump_erl_file file contents
   | [] -> ()
 
 (* Separate extraction: no output-file argument; each module is named
    after the Rocq module of the extracted references (dotted), and the
-   .core files are written to rocq's cwd. Cross-module calls force the
+   .erl files are written to rocq's cwd. Cross-module calls force the
    callees into the export lists, so everything not explicitly marked
    [noexport(...)] is exported. *)
 let erlang_extraction_separate ~opaque_access l =
@@ -202,5 +202,5 @@ let erlang_extraction_separate ~opaque_access l =
   in
   let struc = extract_structure ~opaque_access refs in
   let file_of (Cerlang.Atom n) = Ceprint.escape_atom n ^ ".erl" in
-  write_core_modules ~modname ~exported ~internal ~mode:Cemodule.Separate
+  write_erl_modules ~modname ~exported ~internal ~mode:Cemodule.Separate
     ~file_of struc

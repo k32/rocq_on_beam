@@ -3,7 +3,7 @@ Declare ML Module "rocq-to-erlang".
 From Stdlib Require Import List.
 Import ListNotations.
 
-(* Currying: n-ary Rocq functions are extracted as uncurried Core
+(* Currying: n-ary Rocq functions are extracted as uncurried
    Erlang functions, so partial applications must be eta-expanded. *)
 
 Definition add3 (a b c : nat) : nat := a + b + c.

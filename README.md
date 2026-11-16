@@ -1,11 +1,10 @@
-# coreerlang — minimal Rocq extraction to Core Erlang
+# coreerlang — minimal Rocq extraction to Erlang
 
-A minimal-viable Rocq plugin that extracts Rocq definitions to
-[Core Erlang](https://erlang.org/doc/apps/compiler/core_erlang.html),
-the intermediate language of the Erlang compiler. It reuses Rocq's own
-extraction machinery (MiniML) and only adds a Core Erlang printer, so
-everything the standard `Extraction` command supports (logical erasure,
-inlining, opacity handling, …) carries over.
+A minimal-viable Rocq plugin that extracts Rocq definitions to Erlang.
+It reuses Rocq's own extraction machinery (MiniML) and only adds a
+Erlang printer, so everything the standard `Extraction` command
+supports (logical erasure, inlining, opacity handling, …) carries
+over.
 
 ## Usage
 
@@ -60,7 +59,7 @@ The output file is named after the module, which is what `erlc`
 expects.
 
 
-| Rocq             | Core Erlang                                        |
+| Rocq             | Erlang                                        |
 |------------------|----------------------------------------------------|
 | function         | `'name'/n = fun (X,Y) -> ...`                 |
 | inductive        | constructors become tagged tuples or atoms         |
@@ -75,7 +74,7 @@ expects.
 | record           | one-constructor inductive: `{'mkPoint', X, Y}`, projections are matches; single-function-field records eta-collapse to the function |
 | global call      | `apply 'name'/n (A, B)` (local, recursive ok) |
 | local `fix`      | `letrec 'f'/n = fun ... in ...`               |
-| partial application | eta-expansion (Core Erlang is uncurried)        |
+| partial application | eta-expansion (Erlang is uncurried)        |
 
 (Quoted atoms keep Rocq's original casing, e.g. `'S'`, `'Cons'`; every
 match carries a `match_fail` fallback raising `{'badmatch', ...}`.)
@@ -152,7 +151,7 @@ extracted Counter via the shim.
 ## Building & testing
 
 The OCaml plugin and the Rocq theories are built with dune; the test
-pipeline (Rocq extraction → Core Erlang compilation → eunit) is driven
+pipeline (Rocq extraction → Erlang compilation → eunit) is driven
 by ANVL:
 
 ```sh
@@ -190,11 +189,11 @@ erl -pa test_core -noshell -eval 'eunit:test([rich_tests], [verbose])' -s init s
 
 ## Layout
 
-- `src/cerlang.ml` — the Core Erlang AST (`expr`, `pattern`, `fundef`, `module_`)
+- `src/cerlang.ml` — the Erlang AST (`expr`, `pattern`, `fundef`, `module_`)
 - `src/cenative.ml` — native type lowering: constructor registry (list/pair/nat/Z/positive), literal folding, the user-extensible `Erlang Native Call` hash table (+ its handwired residue: synthetic-operand BIFs, identity conversions, fixed values), constructor/pattern/match-branch rewrites
-- `src/cetrans.ml` — term translation: MiniML → Core Erlang AST (de Bruijn resolution, eta-expansion, fixpoints); queries `Cenative` for all native decisions
+- `src/cetrans.ml` — term translation: MiniML → Erlang AST (de Bruijn resolution, eta-expansion, fixpoints); queries `Cenative` for all native decisions
 - `src/cemodule.ml` — structure/module layer: walks the MiniML structure, fun maps, module assembly; drives `Cetrans`
-- `src/ceprint.ml` — phase 2: Core Erlang AST → concrete syntax (pure pretty-printing, including integer/float literal rendering)
+- `src/ceprint.ml` — phase 2: Erlang AST → concrete syntax (pure pretty-printing, including integer/float literal rendering)
 - `src/coreerlang.ml` — glue: drives Rocq's extraction, then the two phases; vernac entry points
 - `src/coreerlang_vernac.mlg` — the `Erlang Extraction` vernaculars
 - `theories/` — Rocq support library (logical name `Erlang`)

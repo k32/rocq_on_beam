@@ -1,6 +1,6 @@
 version = "0.1"
 directory = "."
-description = "Rocq extraction plugin targeting Core Erlang"
+description = "Rocq extraction plugin targeting Erlang"
 requires = "rocq-runtime.plugins.extraction zarith"
 archive(byte) = "rocq_to_erlang_plugin.cma"
 archive(native) = "rocq_to_erlang_plugin.cmxs"

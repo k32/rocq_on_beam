@@ -1,5 +1,4 @@
 _build/
-test_core/
 !test_core/.gitignore
 *.core
 *.beam
@@ -17,3 +16,4 @@ test/plugin/*.cma
 test/extracted/*/src/
 anvl_lock/
 familiar_workdir/
+test/extracted
