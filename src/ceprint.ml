@@ -1,16 +1,12 @@
-(*-----------------------------------------------------------------------*)
-(*  Phase 2: pretty-print the Erlang AST (Cerlang) as source text.       *)
-(*                                                                       *)
-(*  This phase is pure: no naming, no de Bruijn indices, no Rocq         *)
-(*  knowledge — just a straightforward rendering of the AST into the     *)
-(*  Erlang concrete syntax (as accepted by erlc).                        *)
-(*-----------------------------------------------------------------------*)
+(*-----------------------------------------------------------------------
+  Phase 2: pretty-print the Erlang AST (Cerlang) as source text.
+
+  This phase is pure: no naming, no de Bruijn indices, no Rocq
+  knowledge — just a straightforward rendering of the AST into the
+  Erlang concrete syntax (as accepted by erlc).
+-----------------------------------------------------------------------*)
 
 open Cerlang
-
-(* -------------------------------------------------------------------- *)
-(* Atom naming                                                          *)
-(* -------------------------------------------------------------------- *)
 
 (* Only the quote character is escaped; the empty atom '' is valid
    Erlang. *)
@@ -30,7 +26,8 @@ let unatom (Cerlang.Atom s) = "'" ^ escape_atom s ^ "'"
    [Cetrans.fresh_var]; the concrete name is derived here. *)
 let unvar (Cerlang.Var n) = "_" ^ string_of_int n
 
-let string_of_fun_ref (f : atom) arity = unatom f  (* ^ "/" ^ string_of_int arity *)
+let string_of_fun_ref (f : atom) arity =
+  unatom f (* ^ "/" ^ string_of_int arity *)
 
 let join buf pre sep post f l =
   Buffer.add_string buf pre;
@@ -52,10 +49,7 @@ let rec emit_expr buf e =
   let emit_fun name params body =
     (* fun $name?($v1, $v2, ...) -> $body *)
     push "fun ";
-    (match name with
-    | None -> ()
-    | Some str ->
-        push str);
+    (match name with None -> () | Some str -> push str);
     join buf "(" "," ")" (fun _ i -> push (unvar i)) params;
     push " -> ";
     emit_expr buf body;

@@ -1,14 +1,14 @@
-(*-----------------------------------------------------------------------*)
-(*  Minimal extraction of Rocq terms to Core Erlang.                     *)
-(*                                                                       *)
-(*  Pipeline (two phases):                                               *)
-(*    1. [Cetrans] : Rocq's MiniML (from the standard extraction         *)
-(*       internals) -> Core Erlang AST ([Cerlang])                       *)
-(*    2. [Ceprint] : Core Erlang AST -> concrete syntax accepted by erlc *)
-(*                                                                       *)
-(*  This module only drives Rocq: locate references, run the extraction  *)
-(*  environment, and print / write the result.                           *)
-(*-----------------------------------------------------------------------*)
+(*-----------------------------------------------------------------------
+  Minimal extraction of Rocq terms to Core Erlang.
+
+  Pipeline (two phases):
+    1. [Cetrans] : Rocq's MiniML (from the standard extraction
+       internals) -> Core Erlang AST ([Cerlang])
+    2. [Ceprint] : Core Erlang AST -> concrete syntax accepted by erlc
+
+  This module only drives Rocq: locate references, run the extraction
+  environment, and print / write the result.
+-----------------------------------------------------------------------*)
 
 open Names
 module Miniml = Extraction_plugin.Miniml
@@ -18,18 +18,18 @@ module Modutil = Extraction_plugin.Modutil
 module Table = Extraction_plugin.Table
 open Miniml
 
-(* -------------------------------------------------------------------- *)
-(* Reference location (like `locate_ref` in Extract_env, constants only) *)
-(* -------------------------------------------------------------------- *)
+(*---------------------------------------------------------------------
+ Reference location (like `locate_ref` in Extract_env, constants only)
+---------------------------------------------------------------------*)
 
 let locate_ref qid =
   let gr = Smartlocate.global_with_alias qid in
   let inst = Environ.universes_of_global (Global.env ()) gr in
   List.map (fun inst -> { glob = gr; inst }) (InfvInst.generate inst)
 
-(* -------------------------------------------------------------------- *)
-(* Extraction                                                           *)
-(* -------------------------------------------------------------------- *)
+(*--------------------------------------------------------------------
+ Extraction
+--------------------------------------------------------------------*)
 
 let extract_structure ~opaque_access refs =
   let state =
@@ -51,9 +51,9 @@ let modname_of_qualid qid =
   | r :: _ -> Cerlang.Atom (ModPath.to_string (Table.modpath_of_r r))
   | [] -> Cerlang.Atom "extracted"
 
-(* -------------------------------------------------------------------- *)
-(* Native call declaration                                               *)
-(* -------------------------------------------------------------------- *)
+(*--------------------------------------------------------------------
+ Native call declaration
+--------------------------------------------------------------------*)
 
 (* Parse "module:function/arity", the Erlang side of a native call
    declaration; [None] when malformed *)
@@ -90,8 +90,8 @@ let erlang_native_call r s drop =
         CErrors.user_err ?loc
           Pp.(
             str
-              "Erlang extraction: the number of dropped arguments must not \
-               be negative")
+              "Erlang extraction: the number of dropped arguments must not be \
+               negative")
       else
         match Smartlocate.global_with_alias r with
         | GlobRef.ConstRef _ as gr ->
@@ -103,9 +103,9 @@ let erlang_native_call r s drop =
                 ++ Nametab.pr_global_env Id.Set.empty gr
                 ++ str " must be a definition (constant)"))
 
-(* -------------------------------------------------------------------- *)
-(* The vernacular entry points                                          *)
-(* -------------------------------------------------------------------- *)
+(*--------------------------------------------------------------------
+ The vernacular entry points
+--------------------------------------------------------------------*)
 
 let erlang_extraction ~opaque_access (x, exported) =
   let refs = locate_ref x in

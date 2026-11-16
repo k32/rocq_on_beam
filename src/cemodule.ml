@@ -73,9 +73,8 @@ let rec group_of_module mp elems =
               CErrors.user_err
                 Pp.(
                   str
-                    "Erlang extraction: functor modules are not \
-                     extractable (module-level functions do not exist in Core \
-                     Erlang)"
+                    "Erlang extraction: functor modules are not extractable \
+                     (module-level functions do not exist in Erlang)"
                   ++ str " while extracting module "
                   ++ str (ModPath.to_string mp)))
       | SEmodtype _ -> (* signature-only *) ())

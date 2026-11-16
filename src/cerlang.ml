@@ -1,9 +1,9 @@
-(*-----------------------------------------------------------------------*)
-(*  Erlang abstract syntax tree.                                         *)
-(*                                                                       *)
-(*  A minimal subset of Erlang, exactly covering what the                *)
-(*  translation from MiniML (see cetrans.ml) produces.                   *)
-(*-----------------------------------------------------------------------*)
+(*-----------------------------------------------------------------------
+  Erlang abstract syntax tree.
+
+  A minimal subset of Erlang, exactly covering what the
+  translation from MiniML (see cetrans.ml) produces.
+-----------------------------------------------------------------------*)
 
 type atom = Atom of string
 
@@ -22,21 +22,16 @@ type expr =
   | ENil (* [] : the empty list *)
   | ECons of expr * expr (* [H|T] : list cons *)
   | ETuple of expr list (* {e1,...,en} : untagged tuple *)
-  | EMap of (expr * expr) list (* ~{k=>v,...}~ : map literal *)
+  | EMap of (expr * expr) list (* #{k=>v,...} : map literal *)
   | EBinary of string
-    (* #{#<n>(8,1,'integer',['unsigned'|['big']]) ...}# : one integer
-       segment per byte of the raw string; the segment form is chosen at
-       printing time (see [Ceprint.emit_expr]) *)
-  | EApply of callee * expr list (* 'mod':'fun' (args) / H (args) *)
+  | EApply of callee * expr list (* apply arguments to something *)
   | EFun of var list * expr (* fun (x1,...,xn) -> body *)
-  | ELet of var * expr * expr (* let x = e1 in e2 *)
-  | ELetrec of letrec_binding list * expr (* letrec b1 ... bn in body *)
+  | ELet of var * expr * expr (* x = e1; *)
+  | ELetrec of letrec_binding list * expr (* Local recursive function *)
   | ECase of expr * (pattern * expr * expr) list
-(* case e of <p> when g -> e ... end;
-       the guard is usually 'true' *)
 
 (* what is being applied: a (remote) global function, an expression
-   (variable, fun reference, ...), or a primop *)
+   (variable, fun reference, ...) *)
 and callee =
   | CGlobal of atom * atom (* 'mod':'fun' *)
   | CExpr of expr (* any apply-able expression *)

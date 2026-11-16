@@ -62,8 +62,7 @@ let check_custom r what =
   then
     CErrors.user_err
       Pp.(
-        str "Erlang extraction: "
-        ++ what
+        str "Erlang extraction: " ++ what
         ++ str " has a custom extraction"
         ++ str " (Extract Constant / Inlined Constant / Inductive), which the"
         ++ str " Core Erlang backend does not support: "
@@ -237,8 +236,7 @@ and render_remote ctx r t args =
       else
         CErrors.user_err
           Pp.(
-            str
-              "Erlang extraction: a fixed native value applied to arguments")
+            str "Erlang extraction: a fixed native value applied to arguments")
   | _ -> failwith "render_remote: unknown remote call"
 
 (* Application [MLapp (f, [a1;...;an])]: flatten the spine, then
