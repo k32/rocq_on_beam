@@ -1,0 +1,7 @@
+(rocq.theory
+ (name rocq_on_beam_theories)
+ (package rocq_on_beam)
+ (synopsis "Definitions isomorphic to the Erlang runtime and shim functions")
+ (theories Stdlib)
+ (plugins rocq_on_beam)
+ (modules :standard))

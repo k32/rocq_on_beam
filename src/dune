@@ -1,0 +1,9 @@
+(library
+ (name rocq_on_beam_plugin)
+ (public_name rocq_on_beam)
+ (synopsis "Rocq extraction plugin targeting Erlang")
+ (libraries rocq-runtime.plugins.extraction)
+ (modules :standard erlang_vernac))
+
+(rocq.pp
+ (modules erlang_vernac))
