@@ -30,4 +30,4 @@ Compute doit (Int 3).
 Compute doit (Int (-123456789012345678901234567890)).
 Compute doit (Bool true).
 
-CoreErlang Separate Extraction doit.
+Erlang Separate Extraction doit.

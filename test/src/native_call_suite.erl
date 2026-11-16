@@ -1,7 +1,7 @@
 -module(native_call_suite).
 -include_lib("eunit/include/eunit.hrl").
 
-%% CoreErlang Native Call: a user definition mapped onto an Erlang
+%% Erlang Native Call: a user definition mapped onto an Erlang
 %% function renders every application as a call to that function
 mul_test() ->
     ?assertEqual(12, native_call:twelve()),

@@ -121,5 +121,5 @@ End gen_server_invariant.
    gen_server adapter of the runtime app (see shim/src); the
    trailing 1 drops the GenServerT dictionary argument. Declared here,
    they apply to every importer of this module. *)
-CoreErlang Native Call call := "rocq_gen_server:call/3" 1.
-CoreErlang Native Call cast := "rocq_gen_server:cast/2" 1.
+Erlang Native Call call := "rocq_gen_server:call/3" 1.
+Erlang Native Call cast := "rocq_gen_server:cast/2" 1.

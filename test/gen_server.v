@@ -188,7 +188,7 @@ Module LIFO_state_invariant : gen_server_invariant LIFO.
   Qed.
 End LIFO_state_invariant.
 
-CoreErlang Separate Extraction
+Erlang Separate Extraction
   Counter.init Counter.handle_cast Counter.handle_call Counter.handle_info
   LIFO.init LIFO.handle_cast LIFO.handle_call LIFO.handle_info
   LIFO.push LIFO.pop LIFO.get_len LIFO.apush LIFO.adrop.

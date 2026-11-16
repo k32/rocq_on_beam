@@ -9,7 +9,7 @@ Fixpoint add (n m : nat) {struct m} : nat :=
 Compute add 2 3.
 
 (* to stdout *)
-CoreErlang Extraction add.
+Erlang Extraction add.
 
 (* to a file *)
-CoreErlang Separate Extraction add.
+Erlang Separate Extraction add.

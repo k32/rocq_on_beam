@@ -1,40 +1,40 @@
 open Names
 module Table = Extraction_plugin.Table
-(*-----------------------------------------------------------------------*)
-(*  Native type lowering.                                                *)
-(*                                                                       *)
-(*  Some Rocq datatypes map onto native Erlang terms: lists, pairs,      *)
-(*  integers (nat, Z), binaries (primitive strings). This module owns    *)
-(*  everything about that mapping:                                       *)
-(*    - the registry of the constructors involved (by GlobRef),          *)
-(*    - literal folding,                                                 *)
-(*    - the table of native call targets (Erlang functions standing in   *)
-(*      for Rocq definitions), user-extensible via the vernac            *)
-(*      [CoreErlang Native Call ...] (see below),                        *)
-(*    - constructor / pattern / match-branch translation for the         *)
-(*      lowered types.                                                   *)
-(*                                                                       *)
-(*  The type mapping is fixed (Erlang has no user-definable types), so   *)
-(*  it is hardwired here instead of reusing [Extract Inductive]-style    *)
-(*  configuration; the call table is data, declared alongside the        *)
-(*  definitions it replaces (theories/BIF.v, theories/GenServer.v).      *)
-(*                                                                       *)
-(*  [cetrans] queries this module ([is_*] predicates, [constructor],     *)
-(*  [pattern], [rewrite_branch], [zop_of]) and passes control; it never  *)
-(*  decides native translations itself.                                  *)
-(*-----------------------------------------------------------------------*)
+(*-----------------------------------------------------------------------
+  Native type lowering.
+
+  Some Rocq datatypes map onto native Erlang terms: lists, pairs,
+  integers (nat, Z), binaries (primitive strings). This module owns
+  everything about that mapping:
+    - the registry of the constructors involved (by GlobRef),
+    - literal folding,
+    - the table of native call targets (Erlang functions standing in
+      for Rocq definitions), user-extensible via the vernac
+      [Erlang Native Call ...] (see below),
+    - constructor / pattern / match-branch translation for the
+      lowered types.
+
+  The type mapping is fixed (Erlang has no user-definable types), so
+  it is hardwired here instead of reusing [Extract Inductive]-style
+  configuration; the call table is data, declared alongside the
+  definitions it replaces (theories/BIF.v, theories/GenServer.v).
+
+  [cetrans] queries this module ([is_*] predicates, [constructor],
+  [pattern], [rewrite_branch], [zop_of]) and passes control; it never
+  decides native translations itself.
+-----------------------------------------------------------------------*)
 
 module Miniml = Extraction_plugin.Miniml
 open Miniml
 
-(* -------------------------------------------------------------------- *)
-(* Constructor classification, by plain pattern matching on the         *)
-(* (label, module path); no lists, no searching, no name resolution.    *)
-(*                                                                      *)
-(* NB: match on (label, module path) strings, not on GlobRefs:          *)
-(* constructors of one inductive share a KerName, so [Table.repr_of_r]  *)
-(* is not constructor-specific (O and S would be indistinguishable).    *)
-(* -------------------------------------------------------------------- *)
+(*-----------------------------------------------------------------------
+ Constructor classification, by plain pattern matching on the
+ (label, module path); no lists, no searching, no name resolution.
+
+ NB: match on (label, module path) strings, not on GlobRefs:
+ constructors of one inductive share a KerName, so [Table.repr_of_r]
+ is not constructor-specific (O and S would be indistinguishable).
+-----------------------------------------------------------------------*)
 
 type ctor =
   (* List *)
@@ -120,18 +120,18 @@ let is_xH r = match global_to_ctor r with Some CxH -> true | _ -> false
 let is_xO r = match global_to_ctor r with Some CxO -> true | _ -> false
 let is_xI r = match global_to_ctor r with Some CxI -> true | _ -> false
 
-(* -------------------------------------------------------------------- *)
-(* Helpers shared by the lowering rules                                 *)
-(* -------------------------------------------------------------------- *)
+(* --------------------------------------------------------------------
+ Helpers shared by the lowering rules
+-------------------------------------------------------------------- *)
 
 let erlang_call f args =
   Cerlang.EApply (Cerlang.CGlobal (Cerlang.Atom "erlang", Cerlang.Atom f), args)
 
 let guard_true = Cerlang.EAtom (Cerlang.Atom "true")
 
-(* -------------------------------------------------------------------- *)
-(* Literal folding                                                      *)
-(* -------------------------------------------------------------------- *)
+(* --------------------------------------------------------------------
+ Literal folding
+-------------------------------------------------------------------- *)
 
 (* literal folding cap for nat S-chains: beyond this, unfold into
    arithmetic calls instead of one huge integer *)
@@ -159,9 +159,9 @@ let z_literal = function
   | MLcons (_, r, [ t ]) when is_Zneg r -> Option.map Z.neg (pos_literal t)
   | _ -> None
 
-(* -------------------------------------------------------------------- *)
-(* Constructors and patterns                                            *)
-(* -------------------------------------------------------------------- *)
+(* --------------------------------------------------------------------
+ Constructors and patterns
+-------------------------------------------------------------------- *)
 
 let is_native_constructor (r : global) = global_to_ctor r <> None
 
@@ -283,9 +283,9 @@ let translate_pattern_usual (r : global) (names : Cerlang.var list) :
   | Some _, _ -> PTuple [ PAtom (Atom "coq_bad_cons") ]
   | None, _ -> failwith "unknown native usual pattern"
 
-(* -------------------------------------------------------------------- *)
-(* Match branches                                                       *)
-(* -------------------------------------------------------------------- *)
+(* --------------------------------------------------------------------
+ Match branches
+-------------------------------------------------------------------- *)
 
 (* Rewrite one match branch for the natively lowered arithmetic
    types, whose constructor patterns cannot stay structural:
@@ -353,31 +353,32 @@ let translate_branch (v : Cerlang.var) (pat : ml_pattern)
 let is_native_branch (pat : ml_pattern) =
   rewrite_branch (Cerlang.Var 0) pat None <> None
 
-(* -------------------------------------------------------------------- *)
-(* Remote calls: what a global constant becomes natively.                *)
-(*                                                                       *)
-(* Purely a data question: a global maps to a native call target         *)
-(* (module, function, arity, number of leading ML arguments to drop      *)
-(* untranslated -- e.g. an EqDec dictionary) or a fixed value.           *)
-(* Currying/eta handling is NOT done here; [cetrans] owns the single     *)
-(* application engine and renders fully-applied calls via                *)
-(* [render_call].  A global with a target (of any kind) is never         *)
-(* emitted as a fundef.                                                  *)
-(*                                                                       *)
-(* Sources of targets, in priority order:                                *)
-(*  1. the user-extensible hash table below, updated by the vernac       *)
-(*       CoreErlang Native Call <def> := "module:function/arity" drop.   *)
-(*     ([Cenative.declare_native_call]; plain calls only), declared in   *)
-(*     the theories (BIF.v, GenServer.v) next to the definitions they    *)
-(*     replace, and usable for any user definition;                      *)
-(*  2. a handwired fallback for the few entries that command cannot      *)
-(*     express: unary Z operations rendered as binary BIF calls with     *)
-(*     a synthetic operand, conversions that are the identity, and a     *)
-(*     fixed value.                                                      *)
-(*                                                                       *)
-(* Z.compare and Nat.eq_dec have no entries; usage shows up as an        *)
-(* unextracted-constant error in the translation.                        *)
-(* -------------------------------------------------------------------- *)
+(* --------------------------------------------------------------------
+ Remote calls: what a global constant becomes natively.
+
+ Purely a data question: a global maps to a native call target
+ (module, function, arity, number of leading ML arguments to drop
+ untranslated -- e.g. an EqDec dictionary) or a fixed value.
+ Currying/eta handling is NOT done here; [cetrans] owns the single
+ application engine and renders fully-applied calls via
+ [render_call].  A global with a target (of any kind) is never
+ emitted as a fundef.
+
+ Sources of targets, in priority order:
+  1. the user-extensible hash table below, updated by the vernac
+       Erlang Native Call <def> := "module:function/arity" drop.
+     ([Cenative.declare_native_call]; plain calls only), declared in
+     the theories (BIF.v, GenServer.v) next to the definitions they
+     replace, and usable for any user definition;
+  2. a handwired fallback for the few entries that command cannot
+     express: unary Z operations rendered as binary BIF calls with
+     a synthetic operand, conversions that are the identity, and a
+     fixed value.
+
+ Z.compare and Nat.eq_dec have no entries; usage shows up as an
+ unextracted-constant error in the translation.
+
+-------------------------------------------------------------------- *)
 
 type target =
   | NativeCall of Cerlang.atom * Cerlang.atom * int * int
@@ -391,9 +392,9 @@ type target =
   | NativeValue of Cerlang.expr (* a fixed value *)
   | NotNative
 
-(* -------------------------------------------------------------------- *)
-(* The user-extensible native call table.                               *)
-(* -------------------------------------------------------------------- *)
+(* --------------------------------------------------------------------
+ The user-extensible native call table.
+ -------------------------------------------------------------------- *)
 
 (* the payload of one user-declared native call *)
 type native_call = {
@@ -414,7 +415,7 @@ let native_calls : native_call KnHashtbl.t = KnHashtbl.create 64
    so that backtracking (Back, reset) rolls declarations back, like the
    tables of the standard extraction. *)
 let () =
-  Summary.declare_summary "CoreErlangNativeCalls"
+  Summary.declare_summary "ErlangNativeCalls"
     {
       Summary.stage = Summary.Stage.Interp;
       freeze_function =
@@ -436,7 +437,7 @@ let kn_of_gr (gr : GlobRef.t) : KerName.t =
    in the theories (BIF.v, GenServer.v) apply to every importer. *)
 let native_call_entry : GlobRef.t * native_call -> Libobject.obj =
   Libobject.declare_object
-  @@ Libobject.superglobal_object "CoreErlang Native Call"
+  @@ Libobject.superglobal_object "Erlang Native Call"
        ~cache:(fun (gr, nc) -> KnHashtbl.replace native_calls (kn_of_gr gr) nc)
        ~subst:
          (Some
@@ -450,10 +451,10 @@ let declare_native_call (gr : GlobRef.t) m f arity drop =
     (native_call_entry
        (gr, { nc_module = m; nc_function = f; nc_arity = arity; nc_drop = drop }))
 
-(* -------------------------------------------------------------------- *)
-(* The handwired fallback: targets the vernac command cannot express,  *)
-(* by plain pattern matching on the kernel name's (label, module path).*)
-(* -------------------------------------------------------------------- *)
+(* --------------------------------------------------------------------
+ The handwired fallback: targets the vernac command cannot express,
+ by plain pattern matching on the kernel name's (label, module path).
+-------------------------------------------------------------------- *)
 
 let is_z_modpath m =
   match m with

@@ -27,4 +27,4 @@ Definition apply_wrapped (w : wrapper nat nat) (n : nat) : nat :=
 Definition adder_wrapper : wrapper nat nat :=
   mkWrapper nat nat (fun n => n + n).
 
-CoreErlang Separate Extraction origin sum_coords translate apply_wrapped adder_wrapper Nat.add.
+Erlang Separate Extraction origin sum_coords translate apply_wrapped adder_wrapper Nat.add.

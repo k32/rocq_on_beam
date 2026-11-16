@@ -71,7 +71,7 @@ let parse_native_target s =
       else None
   | _ -> None
 
-(* CoreErlang Native Call r := "m:f/a" drop: applications of the Rocq
+(* Erlang Native Call r := "m:f/a" drop: applications of the Rocq
    definition [r] extract as calls to the Erlang function [m:f/a]; the
    [drop] leading Rocq arguments are dropped untranslated (e.g. a
    typeclass dictionary), usually 0. The declaration travels with the
@@ -82,7 +82,7 @@ let erlang_native_call r s drop =
   | None ->
       CErrors.user_err ?loc
         Pp.(
-          str "CoreErlang extraction: invalid native call target "
+          str "Erlang extraction: invalid native call target "
           ++ qs s
           ++ str ": expected \"module:function/arity\"")
   | Some (m, f, arity) -> (
@@ -90,7 +90,7 @@ let erlang_native_call r s drop =
         CErrors.user_err ?loc
           Pp.(
             str
-              "CoreErlang extraction: the number of dropped arguments must not \
+              "Erlang extraction: the number of dropped arguments must not \
                be negative")
       else
         match Smartlocate.global_with_alias r with
@@ -99,7 +99,7 @@ let erlang_native_call r s drop =
         | (IndRef _ | ConstructRef _ | VarRef _) as gr ->
             CErrors.user_err ?loc
               Pp.(
-                str "CoreErlang extraction: the native call target of "
+                str "Erlang extraction: the native call target of "
                 ++ Nametab.pr_global_env Id.Set.empty gr
                 ++ str " must be a definition (constant)"))
 

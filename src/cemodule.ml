@@ -1,21 +1,21 @@
-(*-----------------------------------------------------------------------*)
-(*  Module and structure translation.                                     *)
-(*                                                                       *)
-(*  This layer owns what the output modules are: it walks the MiniML    *)
-(*  structure, turns declarations into function definitions, keeps the  *)
-(*  toplevel function map used for call resolution, and assembles the  *)
-(*  Cerlang module(s). Term translation (de Bruijn resolution, eta      *)
-(*  handling, constructors, fixpoints) stays in [cetrans], which this   *)
-(*  module drives; native decisions remain in [cenative].               *)
-(*                                                                       *)
-(*  Two modes:                                                           *)
-(*  - Monolithic: every declaration lands in one module, named by the   *)
-(*    caller (the [CoreErlang Extraction "file" ...] command).          *)
-(*  - Separate: one module per Rocq module, named by its ModPath        *)
-(*    (dotted, e.g. 'foo.Inner'); submodules recurse into [MEstruct],   *)
-(*    aliases ([MEident]) emit nothing, module types are signature-only *)
-(*    and skipped, residual functors are an error.                      *)
-(*-----------------------------------------------------------------------*)
+(*-----------------------------------------------------------------------
+  Module and structure translation.
+
+  This layer owns what the output modules are: it walks the MiniML
+  structure, turns declarations into function definitions, keeps the
+  toplevel function map used for call resolution, and assembles the
+  Cerlang module(s). Term translation (de Bruijn resolution, eta
+  handling, constructors, fixpoints) stays in [cetrans], which this
+  module drives; native decisions remain in [cenative].
+
+  Two modes:
+  - Monolithic: every declaration lands in one module, named by the
+    caller (the [Erlang Extraction "file" ...] command).
+  - Separate: one module per Rocq module, named by its ModPath
+    (dotted, e.g. 'foo.Inner'); submodules recurse into [MEstruct],
+    aliases ([MEident]) emit nothing, module types are signature-only
+    and skipped, residual functors are an error.
+-----------------------------------------------------------------------*)
 
 open Names
 module Miniml = Extraction_plugin.Miniml
@@ -38,11 +38,11 @@ type fdef = {
   fd_exported : bool;
 }
 
-(* -------------------------------------------------------------------- *)
-(* Grouping declarations per Rocq module                                 *)
-(* -------------------------------------------------------------------- *)
+(*--------------------------------------------------------------------
+  Grouping declarations per Rocq module
+---------------------------------------------------------------------*)
 
-(* A module under construction: its (dotted) name and its declarations,
+(* a module under construction: its (dotted) name and its declarations,
    dependency-ordered *)
 type module_group = { mg_name : Cerlang.atom; mg_decls : ml_decl list }
 
@@ -73,7 +73,7 @@ let rec group_of_module mp elems =
               CErrors.user_err
                 Pp.(
                   str
-                    "CoreErlang extraction: functor modules are not \
+                    "Erlang extraction: functor modules are not \
                      extractable (module-level functions do not exist in Core \
                      Erlang)"
                   ++ str " while extracting module "

@@ -1,6 +1,6 @@
 (*-----------------------------------------------------------------------*)
-(*  Phase 1: translate MiniML (Rocq's extraction term language) into the  *)
-(*  Core Erlang AST (Cerlang).                                           *)
+(*  Phase 1: translate MiniML (Rocq's extraction term language) into the *)
+(*  Erlang AST (Cerlang).                                                *)
 (*                                                                       *)
 (*  This phase resolves all names: de Bruijn indices (1-based in MiniML) *)
 (*  become Core Erlang variables, globals become function references,    *)
@@ -62,7 +62,7 @@ let check_custom r what =
   then
     CErrors.user_err
       Pp.(
-        str "CoreErlang extraction: "
+        str "Erlang extraction: "
         ++ what
         ++ str " has a custom extraction"
         ++ str " (Extract Constant / Inlined Constant / Inductive), which the"
@@ -121,7 +121,7 @@ let current_function = ref ""
 let eta_info what =
   Feedback.msg_info
     Pp.(
-      str "CoreErlang extraction: eta-conversion ("
+      str "Erlang extraction: eta-conversion ("
       ++ str what ++ str ")" ++ str " while translating '"
       ++ str !current_function ++ str "'"
       ++ str "; this is correct but inefficient and error-prone,"
@@ -238,7 +238,7 @@ and render_remote ctx r t args =
         CErrors.user_err
           Pp.(
             str
-              "CoreErlang extraction: a fixed native value applied to arguments")
+              "Erlang extraction: a fixed native value applied to arguments")
   | _ -> failwith "render_remote: unknown remote call"
 
 (* Application [MLapp (f, [a1;...;an])]: flatten the spine, then
@@ -335,7 +335,7 @@ and trans_global ctx r =
           CErrors.user_err
             Pp.(
               str
-                "CoreErlang extraction: global reference to an unextracted \
+                "Erlang extraction: global reference to an unextracted \
                  constant: "
               ++ str (ModPath.to_string (Table.modpath_of_r r))
               ++ str "."
@@ -473,7 +473,7 @@ and trans_case ctx t branches =
   if Table.is_custom_match branches then
     CErrors.user_err
       Pp.(
-        str "CoreErlang extraction: this match has a custom match extraction"
+        str "Erlang extraction: this match has a custom match extraction"
         ++ str " (Extract Inductive ... with a match function), which the"
         ++ str " Core Erlang backend does not support");
   let guard_true = Cenative.guard_true in

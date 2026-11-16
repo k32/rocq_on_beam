@@ -13,20 +13,20 @@ inlining, opacity handling, …) carries over.
 Declare ML Module "rocq-to-erlang".
 
 (* print to stdout *)
-CoreErlang Extraction add.
+Erlang Extraction add.
 
 (* write a monolithic .core file (dependencies included) *)
-CoreErlang Extraction "adder" add.
+Erlang Extraction "adder" add.
 
 (* separate extraction: no output-file argument; the module (and
    file) name comes from the Rocq module of the references *)
-CoreErlang Separate Extraction add.
+Erlang Separate Extraction add.
 
 (* map a Rocq definition onto a native Erlang function: applications
    of [ref] extract as calls to module:function/arity; the trailing
    integer counts leading Rocq arguments dropped untranslated (e.g. a
    typeclass dictionary), 0 if none *)
-CoreErlang Native Call ref := "erlang_module:erlang_function/2" 0.
+Erlang Native Call ref := "erlang_module:erlang_function/2" 0.
 ```
 
 Native call declarations are ordinary library content: they travel
@@ -65,7 +65,7 @@ expects.
 | function         | `'name'/n = fun (X,Y) -> ...`                 |
 | inductive        | constructors become tagged tuples or atoms         |
 | `nat`            | native integers: `0`, `N`; `S x` → `x+1`; matches use `<0>` / `when N > 0` + predecessor `let`; literal `S`-chains fold |
-| `Z` (ZArith)     | native integers: literals fold (exact, arbitrary precision); `Z.add/sub/mul/max/min/opp/pred/succ/abs/eqb/leb/ltb/of_nat/to_nat` map to Erlang BIFs (`opp`/`pred`/`succ` are unary in Rocq but binary BIFs, so the missing operand is supplied synthetically: `0 - X`, `X - 1`, `X + 1`); user matches on `Z0/Zpos/Zneg` rewrite to guarded clauses. The plain ops are `CoreErlang Native Call` entries declared in `Erlang.BIF` (so a `From Erlang Require Import BIF.` is needed for them) |
+| `Z` (ZArith)     | native integers: literals fold (exact, arbitrary precision); `Z.add/sub/mul/max/min/opp/pred/succ/abs/eqb/leb/ltb/of_nat/to_nat` map to Erlang BIFs (`opp`/`pred`/`succ` are unary in Rocq but binary BIFs, so the missing operand is supplied synthetically: `0 - X`, `X - 1`, `X + 1`); user matches on `Z0/Zpos/Zneg` rewrite to guarded clauses. The plain ops are `Erlang Native Call` entries declared in `Erlang.BIF` (so a `From Erlang Require Import BIF.` is needed for them) |
 | prim. `float`    | native float literals                              |
 | `list`           | native lists: `[]` / `[H\|T]`                      |
 | `prod`           | native untagged tuple `{X, Y}`                     |
@@ -171,7 +171,7 @@ discovery cannot silently pass).
 
 A new test is just two files, picked up automatically:
 
-- `test/foo.v` containing `CoreErlang Extraction "foo" ...`
+- `test/foo.v` containing `Erlang Extraction "foo" ...`
 - `test/src/foo_tests.erl`, an eunit module calling `foo:...`
 
 Manual usage (equivalent steps):
@@ -191,12 +191,12 @@ erl -pa test_core -noshell -eval 'eunit:test([rich_tests], [verbose])' -s init s
 ## Layout
 
 - `src/cerlang.ml` — the Core Erlang AST (`expr`, `pattern`, `fundef`, `module_`)
-- `src/cenative.ml` — native type lowering: constructor registry (list/pair/nat/Z/positive), literal folding, the user-extensible `CoreErlang Native Call` hash table (+ its handwired residue: synthetic-operand BIFs, identity conversions, fixed values), constructor/pattern/match-branch rewrites
+- `src/cenative.ml` — native type lowering: constructor registry (list/pair/nat/Z/positive), literal folding, the user-extensible `Erlang Native Call` hash table (+ its handwired residue: synthetic-operand BIFs, identity conversions, fixed values), constructor/pattern/match-branch rewrites
 - `src/cetrans.ml` — term translation: MiniML → Core Erlang AST (de Bruijn resolution, eta-expansion, fixpoints); queries `Cenative` for all native decisions
 - `src/cemodule.ml` — structure/module layer: walks the MiniML structure, fun maps, module assembly; drives `Cetrans`
 - `src/ceprint.ml` — phase 2: Core Erlang AST → concrete syntax (pure pretty-printing, including integer/float literal rendering)
 - `src/coreerlang.ml` — glue: drives Rocq's extraction, then the two phases; vernac entry points
-- `src/coreerlang_vernac.mlg` — the `CoreErlang Extraction` vernaculars
+- `src/coreerlang_vernac.mlg` — the `Erlang Extraction` vernaculars
 - `theories/` — Rocq support library (logical name `Erlang`)
 - `anvl.erl` — the ANVL test pipeline (root project)
 - `test/plugin/` — META + dune-promoted plugin artifacts for `Declare ML Module`

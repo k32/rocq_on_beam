@@ -17,4 +17,4 @@ Definition swap (A B : Type) (p : A * B) : B * A :=
 Definition mapfst (A B : Type) (f : A -> A) (p : A * B) : A * B :=
   match p with (a, b) => (f a, b) end.
 
-CoreErlang Separate Extraction myfst mysnd swap mapfst.
+Erlang Separate Extraction myfst mysnd swap mapfst.
