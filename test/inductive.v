@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* A plain inductive with several constructors of different arities.
    Each constructor becomes a tagged tuple (or atom when nullary):

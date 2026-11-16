@@ -2,7 +2,7 @@ From Stdlib Require Import ZArith.
 (* loads the native-call declarations for the Z operations *)
 From Erlang Require Import BIF.
 
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* A typeclass: just a one-constructor record with parameters *)
 Class Show A := {

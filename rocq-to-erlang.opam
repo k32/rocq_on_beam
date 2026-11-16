@@ -1,5 +1,5 @@
 opam-version: "2.0"
-name: "rocq-core-erlang"
+name: "rocq-to-erlang"
 version: "0.1"
 synopsis: "Minimal Rocq extraction plugin targeting Core Erlang"
 maintainer: "noreply@example.com"

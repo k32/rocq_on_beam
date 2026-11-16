@@ -1,9 +1,9 @@
 (library
- (name coreerlang_plugin)
- (public_name rocq-core-erlang)
- (synopsis "Rocq extraction plugin targeting Core Erlang")
+ (name rocq_to_erlang_plugin)
+ (public_name rocq-to-erlang)
+ (synopsis "Rocq extraction plugin targeting Erlang")
  (libraries coq-core.vernac rocq-runtime.plugins.extraction)
- (modules :standard coreerlang_vernac))
+ (modules :standard rocq_to_erlang_vernac))
 
 (rocq.pp
- (modules coreerlang_vernac))
+ (modules rocq_to_erlang_vernac))

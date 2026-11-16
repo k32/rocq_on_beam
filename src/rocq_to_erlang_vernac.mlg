@@ -7,7 +7,7 @@ open Libnames
 let global = Procq.Constr.global
 }
 
-DECLARE PLUGIN "rocq-core-erlang"
+DECLARE PLUGIN "rocq-to-erlang"
 
 {
 open Pp
@@ -28,20 +28,20 @@ END
    module exports (by default every listed reference is exported).
    Purely reads and prints: classified as QUERY. *)
 VERNAC COMMAND EXTEND CoreErlangExtraction CLASSIFIED AS QUERY STATE opaque_access
-| [ "CoreErlang" "Extraction" export_spec(x) ] -> { coreerlang_extraction x }
+| [ "CoreErlang" "Extraction" export_spec(x) ] -> { erlang_extraction x }
 END
 
 (* Monolithic extraction to a Core Erlang file *)
 VERNAC COMMAND EXTEND CoreErlangExtractionFile CLASSIFIED AS SIDEFF STATE opaque_access
 | [ "CoreErlang" "Extraction" string(f) ne_export_spec_list(l) ]
-  -> { coreerlang_extraction_file f l }
+  -> { erlang_extraction_file f l }
 END
 
 (* Separate extraction: no output file; the module (and file) name
    comes from the Rocq module of the extracted references *)
 VERNAC COMMAND EXTEND CoreErlangSeparateExtraction CLASSIFIED AS SIDEFF STATE opaque_access
 | [ "CoreErlang" "Separate" "Extraction" ne_export_spec_list(l) ]
-  -> { coreerlang_extraction_separate l }
+  -> { erlang_extraction_separate l }
 END
 
 (* Declare a native call target for a Rocq definition: applications of
@@ -52,5 +52,5 @@ END
    required theory apply here) and rolled back by Back. *)
 VERNAC COMMAND EXTEND CoreErlangNativeCall CLASSIFIED AS SIDEFF
 | [ "CoreErlang" "Native" "Call" global(r) ":=" string(s) integer(d) ]
-  -> { coreerlang_native_call r s d }
+  -> { erlang_native_call r s d }
 END

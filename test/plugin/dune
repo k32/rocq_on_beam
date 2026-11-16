@@ -4,15 +4,15 @@
 ;; manually maintained symlinks into _build are needed.
 
 (rule
- (target coreerlang_plugin.cma)
- (deps %{workspace_root}/src/coreerlang_plugin.cma)
+ (target rocq_to_erlang_plugin.cma)
+ (deps %{workspace_root}/src/rocq_to_erlang_plugin.cma)
  (action
   (copy %{deps} %{target}))
  (mode promote))
 
 (rule
- (target coreerlang_plugin.cmxs)
- (deps %{workspace_root}/src/coreerlang_plugin.cmxs)
+ (target rocq_to_erlang_plugin.cmxs)
+ (deps %{workspace_root}/src/rocq_to_erlang_plugin.cmxs)
  (action
   (copy %{deps} %{target}))
  (mode promote))

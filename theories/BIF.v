@@ -5,7 +5,7 @@
 (* the LibTx Storage class (through its interface, via the list         *)
 (* instance).                                                            *)
 
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 From Stdlib Require Import List Classes.EquivDec.
 From Stdlib Require ZArith.

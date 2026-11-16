@@ -10,7 +10,7 @@ inlining, opacity handling, …) carries over.
 ## Usage
 
 ```coq
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* print to stdout *)
 CoreErlang Extraction add.

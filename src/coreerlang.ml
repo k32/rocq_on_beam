@@ -76,7 +76,7 @@ let parse_native_target s =
    [drop] leading Rocq arguments are dropped untranslated (e.g. a
    typeclass dictionary), usually 0. The declaration travels with the
    enclosing module: requiring it replays the entry. *)
-let coreerlang_native_call r s drop =
+let erlang_native_call r s drop =
   let loc = r.CAst.loc in
   match parse_native_target s with
   | None ->
@@ -107,7 +107,7 @@ let coreerlang_native_call r s drop =
 (* The vernacular entry points                                          *)
 (* -------------------------------------------------------------------- *)
 
-let coreerlang_extraction ~opaque_access (x, exported) =
+let erlang_extraction ~opaque_access (x, exported) =
   let refs = locate_ref x in
   let struc = extract_structure ~opaque_access refs in
   let exported =
@@ -171,7 +171,7 @@ let write_core_modules ~modname ~exported ?(internal = KerName.Set.empty)
           dump_core_file file (Ceprint.string_of_module m))
         mods
 
-let coreerlang_extraction_file ~opaque_access f l =
+let erlang_extraction_file ~opaque_access f l =
   let refs, exported, _internal = refs_and_exported l in
   let struc = extract_structure ~opaque_access refs in
   (* the file is named after the module (erlc requires name and module
@@ -193,7 +193,7 @@ let coreerlang_extraction_file ~opaque_access f l =
    .core files are written to rocq's cwd. Cross-module calls force the
    callees into the export lists, so everything not explicitly marked
    [noexport(...)] is exported. *)
-let coreerlang_extraction_separate ~opaque_access l =
+let erlang_extraction_separate ~opaque_access l =
   let refs, exported, internal = refs_and_exported l in
   let modname =
     match refs with

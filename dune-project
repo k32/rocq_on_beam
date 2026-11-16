@@ -2,8 +2,8 @@
 (using rocq 0.13)
 
 (package
-  (name rocq-core-erlang)
-  (synopsis "Rocq extraction plugin targeting Core Erlang")
+  (name rocq-to-erlang)
+  (synopsis "Rocq extraction plugin targeting Erlang")
   (depends
     ocaml
     (rocq-core (>= 9.0))

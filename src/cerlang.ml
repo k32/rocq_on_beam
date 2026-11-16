@@ -1,16 +1,10 @@
 (*-----------------------------------------------------------------------*)
-(*  Core Erlang abstract syntax tree.                                    *)
+(*  Erlang abstract syntax tree.                                         *)
 (*                                                                       *)
-(*  A minimal subset of Core Erlang, exactly covering what the           *)
+(*  A minimal subset of Erlang, exactly covering what the                *)
 (*  translation from MiniML (see cetrans.ml) produces.                   *)
 (*-----------------------------------------------------------------------*)
 
-(* Atoms are the names appearing in Core Erlang source: module names,
-   function names, constructor tags, ... The type is isomorphic to
-   [string], but it makes atom-producing sites explicit; names derived
-   from Rocq should be built via [Cetrans.global_name] (in the layer
-   above). Quoting and escaping happen at printing time (see
-   [Ceprint.unatom]). *)
 type atom = Atom of string
 
 (* Variables: binder names in the generated code, identified by a
@@ -73,5 +67,5 @@ type fundef = {
   fun_exported : bool;
 }
 
-(* A whole Core Erlang module *)
+(* A whole Erlang module *)
 type module_ = { mod_name : atom; mod_funcs : fundef list }

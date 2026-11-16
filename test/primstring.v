@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* primitive strings lower to binaries *)
 Require Import PrimString.

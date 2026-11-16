@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* Nested, non-recursive function definitions: let-bound lambdas
    referring to outer let-bound lambdas. *)

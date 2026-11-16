@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* A Rocq Record is an inductive with one constructor; extraction turns
    the projections into functions that match on the constructor. *)

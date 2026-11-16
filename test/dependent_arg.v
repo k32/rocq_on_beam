@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 From Stdlib Require Import ZArith.
 (* loads the native-call declarations for the Z operations *)

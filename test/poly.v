@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* Polymorphic functions over tuples: the type parameters A and B are
    logical (in Type/Prop, erased by extraction), so the extracted code

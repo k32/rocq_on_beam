@@ -1,17 +1,3 @@
-%% ANVL project: the Rocq-to-Core-Erlang extraction test pipeline.
-%%
-%% dune remains the source of truth for the OCaml plugin and the Rocq
-%% theories. Every test is a separate OTP application
-%% (test/extracted/<base>): its extracted .core files (rocq writes to
-%% its cwd) plus its eunit suite. Test execution is driven by the
-%% anvl_test plugin (git dependency): the eunit suites of an
-%% application are discovered automatically and each suite module runs
-%% as a test case on its own node, with a code path built from the
-%% application's closure. Since every CoreErlang Separate Extraction
-%% command is its own project, two tests may emit different versions
-%% of the same dependency module (e.g. 'Corelib.Init.Nat' with
-%% different closures) -- being separate applications running on
-%% separate nodes, those versions never meet.
 -export([conf/0]).
 
 -include("anvl.hrl").
@@ -31,7 +17,7 @@ conf() ->
        ]
    , erlang =>
        #{ app_paths => ["shim", "test/extracted/${app}"]
-        , sources => ["${src_root}/src/*.erl", "${src_root}/src/*.erl"]
+        , sources => ["${src_root}/src/*.erl"]
         , includes => ["${src_root}/src", anvl_plugin:includes_dir()]
         }
    }.
@@ -68,25 +54,22 @@ bases() ->
         false
       end).
 
-%% One test/<base>.v -> the OTP application test/extracted/<base>:
-%% its .core files (written by rocq into the app's src dir), its
-%% .app.src and its eunit suite.
 ?MEMO(app_ready, Base,
       begin
         _ = precondition(build_inputs()),
         VFile = filename:join(test_dir(), Base ++ ".v"),
         SrcDir = filename:join(app_dir(Base), "src"),
-        Core = filename:join(SrcDir, Base ++ ".core"),
+        GenSrc = filename:join(SrcDir, Base ++ ".erl"),
         %% the plugin artifact participates: a plugin rebuild must
         %% re-extract even when the .v file is unchanged
-        Plugin = filename:join(plugin_dir(), "coreerlang_plugin.cmxs"),
-        Reextract = anvl_lib:newer([VFile, Plugin], Core),
+        Plugin = filename:join(plugin_dir(), "rocq_to_erlang_plugin.cmxs"),
+        Reextract = anvl_lib:newer([VFile, Plugin], GenSrc),
         Reextract
           andalso begin
-            %% wipe the stale .core files: dropped dependencies of an
+            %% wipe the stale .src files: dropped dependencies of an
             %% older version of the test must not linger in the app
             _ = [file:delete(F)
-                 || F <- filelib:wildcard(filename:join(SrcDir, "*.core"))],
+                 || F <- filelib:wildcard(filename:join(SrcDir, "*.erl"))],
             ok = filelib:ensure_path(SrcDir),
             _ = anvl_lib:exec(
                   "rocq",
@@ -103,11 +86,8 @@ bases() ->
           io_lib:format(
             "~p.~n",
             [{application, list_to_atom(Base),
-              [{description, "Extracted Core Erlang modules"},
+              [{description, "Extracted Erlang modules"},
                {vsn, "0.1.0"}, {registered, []},
-               %% rocq_shim: the Erlang-side support modules
-               %% (e.g. the gen_server shim) reach the test nodes'
-               %% code path via the application closure
                {applications, [kernel, stdlib, eunit, rocq_shim]}]}]),
         changed_write(filename:join(SrcDir, Base ++ ".app.src"),
                       unicode:characters_to_binary(AppSrc)),
@@ -124,7 +104,8 @@ bases() ->
 %% write only when the content actually changed; true when written
 changed_write(File, Content) ->
   case file:read_file(File) of
-    {ok, Content} -> false;
+    {ok, Content} ->
+      false;
     _ ->
       ok = file:write_file(File, Content),
       true

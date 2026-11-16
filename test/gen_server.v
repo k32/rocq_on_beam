@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 From Erlang Require Import GenServer.
 (* From Hammer Require Import Hammer Tactics. *)

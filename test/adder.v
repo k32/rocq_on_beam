@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 Fixpoint add (n m : nat) {struct m} : nat :=
   match m with

@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* nat lowers to native integers: constructor literals fold (S-chains
    become one integer), matches become guarded clauses, and the values

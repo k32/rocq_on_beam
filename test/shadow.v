@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* Repeated shadowing of the same Gallina name by let-binders, lambda
    binders and fix parameters, including inside nested functions. *)

@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* primitive floats lower to native float literals *)
 Require Import PrimFloat.

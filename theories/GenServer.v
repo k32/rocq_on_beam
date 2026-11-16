@@ -1,4 +1,4 @@
-Declare ML Module "rocq-core-erlang".
+Declare ML Module "rocq-to-erlang".
 
 (* Opaque type for handle_call From parameter *)
 Class FromT {from_t : Set} :=
