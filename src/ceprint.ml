@@ -1,9 +1,9 @@
 (*-----------------------------------------------------------------------*)
-(*  Phase 2: pretty-print the Core Erlang AST (Cerlang) as source text.   *)
+(*  Phase 2: pretty-print the Erlang AST (Cerlang) as source text.       *)
 (*                                                                       *)
 (*  This phase is pure: no naming, no de Bruijn indices, no Rocq         *)
 (*  knowledge — just a straightforward rendering of the AST into the     *)
-(*  Core Erlang concrete syntax (as accepted by erlc).                   *)
+(*  Erlang concrete syntax (as accepted by erlc).                        *)
 (*-----------------------------------------------------------------------*)
 
 open Cerlang
@@ -34,33 +34,36 @@ let unvar (Cerlang.Var n) = "_" ^ string_of_int n
    no [end] keyword, [fun] bodies extend as far as possible, and case
    clauses are juxtaposed without a separator but must carry a guard. *)
 
-let string_of_fun_ref (f : atom) arity = unatom f ^ "/" ^ string_of_int arity
+let string_of_fun_ref (f : atom) arity = unatom f  (* ^ "/" ^ string_of_int arity *)
 
-type ctx = { buf : Buffer.t }
-
-let join ctx pre sep post f l =
-  Buffer.add_string ctx.buf pre;
+let join buf pre sep post f l =
+  Buffer.add_string buf pre;
   match l with
-  | [] -> Buffer.add_string ctx.buf post
-  | e :: l ->
-      f ctx e;
+  | [] -> Buffer.add_string buf post
+  | fst :: rest ->
+      f buf fst;
       List.iter
-        (fun e ->
-          Buffer.add_string ctx.buf sep;
-          f ctx e)
-        l;
-      Buffer.add_string ctx.buf post
+        (fun i ->
+          Buffer.add_string buf sep;
+          f buf i)
+        rest;
+      Buffer.add_string buf post
 
-let rec emit_expr ctx e =
-  let push str = Buffer.add_string ctx.buf str in
+let rec emit_expr buf e =
+  let push str = Buffer.add_string buf str in
   (* Separate exprs with newline to get useful Erlang compile errors locations: *)
   push "\n";
-  let emit_fun params body =
-    (* fun($v1, $v2, ...) -> $body *)
-    push "fun";
-    join ctx "(" "," ")" (fun _ i -> push (unvar i)) params;
+  let emit_fun name params body =
+    (* fun $name?($v1, $v2, ...) -> $body *)
+    push "fun ";
+    (match name with
+    | None -> ()
+    | Some str ->
+        push str);
+    join buf "(" "," ")" (fun _ i -> push (unvar i)) params;
     push " -> ";
-    emit_expr ctx body
+    emit_expr buf body;
+    push "\nend"
   in
   match e with
   | EVar v -> push (unvar v)
@@ -78,94 +81,62 @@ let rec emit_expr ctx e =
   | ECons (h, t) ->
       (* [$h | $t] *)
       push "[";
-      emit_expr ctx h;
+      emit_expr buf h;
       push " | ";
-      emit_expr ctx t;
+      emit_expr buf t;
       push "]"
   | ETuple elems ->
       (* {$a, $b, ..., $x} *)
-      join ctx "{" ", " "}" emit_expr elems
+      join buf "{" ", " "}" emit_expr elems
   | EMap assocs ->
-      (* ~{$a => $b, $c => $d, ...}~ *)
+      (* #{$a => $b, $c => $d, ...} *)
       let emit ctx (k, v) =
         emit_expr ctx k;
         push " => ";
         emit_expr ctx v
       in
-      join ctx "~{" ", " "}~" emit assocs
+      join buf "#{" ", " "}" emit assocs
   | EBinary bytes ->
-      (* one integer segment per byte; all four segment arguments are
-       mandatory (shorter forms crash erlc's parser) *)
-      let emit_seg _ c =
-        push "#<";
-        push (string_of_int (Char.code c));
-        push ">(8,1,'integer',['unsigned'|['big']])"
-      in
-      bytes |> String.to_seq |> List.of_seq |> join ctx "#{" ", " "}#" emit_seg
+      let emit_byte _ c = push (string_of_int (Char.code c)) in
+      bytes |> String.to_seq |> List.of_seq |> join buf "<<" ", " ">>" emit_byte
   | EApply (c, args) -> (
       match c with
       | CGlobal (m, f) ->
-          push "call ";
           push (unatom m);
           push ":";
           push (unatom f);
-          emit_args ctx args
-      | CExpr h ->
-          push "apply ";
-          emit_expr ctx h;
-          emit_args ctx args
-      | CPrimop p ->
-          push "primop ";
-          push (unatom p);
-          emit_args ctx args)
-  | EFun (params, body) -> emit_fun params body
+          emit_args buf args
+      | CExpr callee ->
+          emit_expr buf callee;
+          emit_args buf args)
+  | EFun (params, body) -> emit_fun None params body
   | ELet (v, e1, e2) ->
-      List.iter push [ "let "; unvar v; " = " ];
-      emit_expr ctx e1;
-      push " in ";
-      emit_expr ctx e2
+      push (unvar v);
+      push " = ";
+      emit_expr buf e1;
+      push ",";
+      emit_expr buf e2
   | ELetrec (bindings, body) ->
       let emit_binding i =
-        List.iter push
-          [
-            unatom i.lr_name;
-            "/";
-            List.length i.lr_params |> string_of_int;
-            " = ";
-          ];
-        emit_fun i.lr_params i.lr_body
+        emit_fun (Some (unatom i.lr_name)) i.lr_params i.lr_body
       in
-      push "letrec ";
       List.iter emit_binding bindings;
-      push " in ";
-      emit_expr ctx body
+      push ",";
+      emit_expr buf body
   | ECase (scrutinee, branches) ->
-      push "case ";
-      emit_expr ctx scrutinee;
-      push " of ";
+      push "case";
+      emit_expr buf scrutinee;
+      push "\nof\n";
       let emit_branch ctx (pattern, guard, expr) =
-        List.iter push [ " <"; string_of_pattern pattern; "> when " ];
+        push (string_of_pattern pattern);
+        push " when";
         emit_expr ctx guard;
-        push " -> ";
+        push " ->";
         emit_expr ctx expr
       in
-      join ctx "" " " " end " emit_branch branches
+      join buf "" ";\n" "\nend" emit_branch branches
 
-and emit_args ctx args =
-  let push str = Buffer.add_string ctx.buf str in
-  push "(";
-  let rec go l =
-    match l with
-    | [] -> push ")"
-    | [ e ] ->
-        emit_expr ctx e;
-        push ")"
-    | e :: t ->
-        emit_expr ctx e;
-        push ",";
-        go t
-  in
-  go args
+and emit_args buf args = join buf "(" ", " ")" emit_expr args
 
 and string_of_pattern p =
   match p with
@@ -180,24 +151,25 @@ and string_of_pattern p =
 
 let string_of_fundef buf fd =
   let push str = Buffer.add_string buf str in
-  let arity = List.length fd.fun_params in
-  List.iter push [ unatom fd.fun_name; "/"; string_of_int arity; " = fun(" ];
-  push (String.concat ", " (List.map unvar fd.fun_params));
-  push ") -> ";
-  emit_expr { buf } fd.fun_body;
-  push "\n\n"
+  push (unatom fd.fun_name);
+  let emit_arg _ arg = push (unvar arg) in
+  join buf "(" ", " ") ->" emit_arg fd.fun_params;
+  emit_expr buf fd.fun_body;
+  push ".\n\n\n"
 
 let string_of_module m =
   let buf = Buffer.create 10000 in
+  let push = Buffer.add_string buf in
+  push ("-module(" ^ unatom m.mod_name ^ ").\n");
+  (* Exports: *)
   let exported = List.filter (fun fd -> fd.fun_exported) m.mod_funcs in
-  Buffer.add_string buf ("module " ^ unatom m.mod_name ^ " [");
-  List.iteri
-    (fun i fd ->
-      if i > 0 then Buffer.add_string buf ",";
-      Buffer.add_string buf
-        (string_of_fun_ref fd.fun_name (List.length fd.fun_params)))
-    exported;
-  Buffer.add_string buf "] attributes []\n\n";
+  let emit_export fn =
+    push "-export([";
+    push (unatom fn.fun_name ^ "/" ^ string_of_int (List.length fn.fun_params));
+    push "]).\n"
+  in
+  List.iter emit_export exported;
+  push "\n";
+  (* Functions *)
   List.iter (string_of_fundef buf) m.mod_funcs;
-  Buffer.add_string buf "end\n";
   Buffer.contents buf

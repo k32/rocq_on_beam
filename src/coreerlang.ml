@@ -82,24 +82,26 @@ let coreerlang_native_call r s drop =
   | None ->
       CErrors.user_err ?loc
         Pp.(
-          str "CoreErlang extraction: invalid native call target " ++ qs s
+          str "CoreErlang extraction: invalid native call target "
+          ++ qs s
           ++ str ": expected \"module:function/arity\"")
-  | Some (m, f, arity) ->
+  | Some (m, f, arity) -> (
       if drop < 0 then
         CErrors.user_err ?loc
           Pp.(
             str
-              "CoreErlang extraction: the number of dropped arguments must \
-               not be negative")
+              "CoreErlang extraction: the number of dropped arguments must not \
+               be negative")
       else
         match Smartlocate.global_with_alias r with
-        | GlobRef.ConstRef _ as gr -> Cenative.declare_native_call gr m f arity drop
+        | GlobRef.ConstRef _ as gr ->
+            Cenative.declare_native_call gr m f arity drop
         | (IndRef _ | ConstructRef _ | VarRef _) as gr ->
             CErrors.user_err ?loc
               Pp.(
                 str "CoreErlang extraction: the native call target of "
                 ++ Nametab.pr_global_env Id.Set.empty gr
-                ++ str " must be a definition (constant)")
+                ++ str " must be a definition (constant)"))
 
 (* -------------------------------------------------------------------- *)
 (* The vernacular entry points                                          *)
@@ -115,9 +117,10 @@ let coreerlang_extraction ~opaque_access (x, exported) =
         KerName.Set.empty refs
     else KerName.Set.empty
   in
-  (match translate ~modname:(modname_of_qualid x) ~exported struc with
-   | s :: _ -> Feedback.msg_notice Pp.(str s)
-   | [] -> Feedback.msg_notice Pp.(str "Core Erlang extraction: nothing to extract"))
+  match translate ~modname:(modname_of_qualid x) ~exported struc with
+  | s :: _ -> Feedback.msg_notice Pp.(str s)
+  | [] ->
+      Feedback.msg_notice Pp.(str "Core Erlang extraction: nothing to extract")
 
 (* Collect (refs, exported kernel names, explicitly internal kernel
    names) from a reference list: [noexport(...)] marks internal *)
@@ -138,7 +141,8 @@ let refs_and_exported l =
               internal rs )
       in
       (refs @ rs, exported', internal'))
-    ([], KerName.Set.empty, KerName.Set.empty) l
+    ([], KerName.Set.empty, KerName.Set.empty)
+    l
 
 (* Write one rendered module to [file]. Translate first, then write:
    on error, no (truncated) output file is left *)
@@ -158,7 +162,8 @@ let write_core_modules ~modname ~exported ?(internal = KerName.Set.empty)
     Cemodule.translate_structure ~modname ~exported ~internal ~mode struc
   in
   match List.filter (fun m -> m.Cerlang.mod_funcs <> []) mods with
-  | [] -> Feedback.msg_info Pp.(str "Core Erlang extraction: nothing to extract")
+  | [] ->
+      Feedback.msg_info Pp.(str "Core Erlang extraction: nothing to extract")
   | mods ->
       List.iter
         (fun m ->
@@ -179,9 +184,9 @@ let coreerlang_extraction_file ~opaque_access f l =
     (if dir = "." then "" else dir ^ "/") ^ Ceprint.escape_atom base ^ ".core"
   in
   (* monolithic: exactly one module, named after the requested file *)
-  (match translate ~modname ~exported struc with
-   | contents :: _ -> dump_core_file file contents
-   | [] -> ())
+  match translate ~modname ~exported struc with
+  | contents :: _ -> dump_core_file file contents
+  | [] -> ()
 
 (* Separate extraction: no output-file argument; each module is named
    after the Rocq module of the extracted references (dotted), and the
@@ -196,6 +201,6 @@ let coreerlang_extraction_separate ~opaque_access l =
     | [] -> Cerlang.Atom "extracted"
   in
   let struc = extract_structure ~opaque_access refs in
-  let file_of (Cerlang.Atom n) = Ceprint.escape_atom n ^ ".core" in
+  let file_of (Cerlang.Atom n) = Ceprint.escape_atom n ^ ".erl" in
   write_core_modules ~modname ~exported ~internal ~mode:Cemodule.Separate
     ~file_of struc

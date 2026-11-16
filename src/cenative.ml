@@ -281,8 +281,7 @@ let translate_pattern_usual (r : global) (names : Cerlang.var list) :
   | Some COk, _ -> PTuple (PAtom (Atom "ok") :: List.map (fun w -> PVar w) names)
   | Some CError, [] -> PAtom (Atom "error")
   | Some _, _ -> PTuple [ PAtom (Atom "coq_bad_cons") ]
-  | None, _ ->
-     failwith "unknown native usual pattern"
+  | None, _ -> failwith "unknown native usual pattern"
 
 (* -------------------------------------------------------------------- *)
 (* Match branches                                                       *)
@@ -348,10 +347,8 @@ let translate_branch (v : Cerlang.var) (pat : ml_pattern)
     (name : Cerlang.var option) :
     Cerlang.pattern * Cerlang.expr * (Cerlang.var * Cerlang.expr) list =
   match rewrite_branch v pat name with
-  | Some b ->
-     b
-  | None ->
-     failwith "translate branch"
+  | Some b -> b
+  | None -> failwith "translate branch"
 
 let is_native_branch (pat : ml_pattern) =
   rewrite_branch (Cerlang.Var 0) pat None <> None
@@ -421,7 +418,8 @@ let () =
     {
       Summary.stage = Summary.Stage.Interp;
       freeze_function =
-        (fun () -> KnHashtbl.fold (fun kn nc acc -> (kn, nc) :: acc) native_calls []);
+        (fun () ->
+          KnHashtbl.fold (fun kn nc acc -> (kn, nc) :: acc) native_calls []);
       unfreeze_function =
         (fun l ->
           KnHashtbl.reset native_calls;
@@ -436,12 +434,13 @@ let kn_of_gr (gr : GlobRef.t) : KerName.t =
 (* Persistence: one library object per declaration. Its cache is
    replayed when the enclosing module is Required, so entries declared
    in the theories (BIF.v, GenServer.v) apply to every importer. *)
-let native_call_entry : (GlobRef.t * native_call) -> Libobject.obj =
+let native_call_entry : GlobRef.t * native_call -> Libobject.obj =
   Libobject.declare_object
   @@ Libobject.superglobal_object "CoreErlang Native Call"
        ~cache:(fun (gr, nc) -> KnHashtbl.replace native_calls (kn_of_gr gr) nc)
        ~subst:
-         (Some (fun (s, (gr, nc)) -> (Globnames.subst_global_reference s gr, nc)))
+         (Some
+            (fun (s, (gr, nc)) -> (Globnames.subst_global_reference s gr, nc)))
        ~discharge:(fun x -> Some x)
 
 (* the vernac entry (see coreerlang.ml): register an entry and record
@@ -494,8 +493,7 @@ let handwired_target (kn : KerName.t) : target option =
 let kn_target (kn : KerName.t) : target =
   match KnHashtbl.find_opt native_calls kn with
   | Some nc -> NativeCall (nc.nc_module, nc.nc_function, nc.nc_arity, nc.nc_drop)
-  | None -> (
-      match handwired_target kn with Some t -> t | None -> NotNative)
+  | None -> ( match handwired_target kn with Some t -> t | None -> NotNative)
 
 let global_target (r : global) : target = kn_target (Table.repr_of_r r)
 
@@ -516,12 +514,10 @@ let render_call t args =
   | NativeCall2 (m, f, syn, false), [ a ] ->
       Cerlang.EApply (Cerlang.CGlobal (m, f), [ a; syn ])
   | NativeIdentity, [ a ] -> a
-  | _ ->
-     failwith "unknown native call"
+  | _ -> failwith "unknown native call"
 
 (* is this global one with a native target (table or handwired)? Such
    definitions are never emitted as fundefs: every use of them renders
    as the native call / value itself *)
 let is_native_global r = global_target r <> NotNative
-
 let is_native_kn kn = kn_target kn <> NotNative

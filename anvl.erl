@@ -31,7 +31,7 @@ conf() ->
        ]
    , erlang =>
        #{ app_paths => ["shim", "test/extracted/${app}"]
-        , sources => ["${src_root}/src/*.erl", "${src_root}/src/*.core"]
+        , sources => ["${src_root}/src/*.erl", "${src_root}/src/*.erl"]
         , includes => ["${src_root}/src", anvl_plugin:includes_dir()]
         }
    }.

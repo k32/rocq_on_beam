@@ -33,8 +33,7 @@ type expr =
     (* #{#<n>(8,1,'integer',['unsigned'|['big']]) ...}# : one integer
        segment per byte of the raw string; the segment form is chosen at
        printing time (see [Ceprint.emit_expr]) *)
-  | EApply of callee * expr list
-    (* call 'mod':'fun' (args) / apply H (args) / primop 'p' (args) *)
+  | EApply of callee * expr list (* 'mod':'fun' (args) / H (args) *)
   | EFun of var list * expr (* fun (x1,...,xn) -> body *)
   | ELet of var * expr * expr (* let x = e1 in e2 *)
   | ELetrec of letrec_binding list * expr (* letrec b1 ... bn in body *)
@@ -47,7 +46,6 @@ type expr =
 and callee =
   | CGlobal of atom * atom (* 'mod':'fun' *)
   | CExpr of expr (* any apply-able expression *)
-  | CPrimop of atom (* primop 'name' *)
 
 and letrec_binding = {
   lr_name : atom; (* function name, e.g. fix_1_0 *)

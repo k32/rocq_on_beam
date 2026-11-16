@@ -46,7 +46,7 @@ let global_name (r : global) : atom =
     | None -> s
     | Some code -> s ^ "_" ^ code)
 
-(* Erasure markers, also atoms: kept distinctive with a coq_ prefix
+(* Erasure markers, also atoms: kept distinctive with a $rocq_ prefix
    since they may collide with user constructor names otherwise *)
 let marker_exn = Cerlang.Atom "$rocq_exn"
 let marker_dummy = Cerlang.Atom "$rocq_dummy"
@@ -88,7 +88,7 @@ type binder =
 type ctx = {
   env : binder list; (* innermost first *)
   funs : (Cerlang.atom * atom * int) KerName.Map.t;
-    (* all extracted functions, module-wide: module name, function
+      (* all extracted functions, module-wide: module name, function
        name, arity *)
   cur_module : Cerlang.atom; (* the module being translated *)
   counter : int ref;
@@ -166,10 +166,11 @@ let rec trans_args ctx drop args =
   if drop = 0 then List.map (trans_expr ctx) args
   else
     match args with
-    | _ :: t ->
-       trans_args ctx (drop - 1) t
+    | _ :: t -> trans_args ctx (drop - 1) t
     | [] ->
-        failwith "[drop] exceeds the argument list: an arity bookkeeping bug in the native-call tables"
+        failwith
+          "[drop] exceeds the argument list: an arity bookkeeping bug in the \
+           native-call tables"
 
 and take k l =
   if k = 0 then [] else match l with x :: t -> x :: take (k - 1) t | [] -> []
@@ -238,9 +239,7 @@ and render_remote ctx r t args =
           Pp.(
             str
               "CoreErlang extraction: a fixed native value applied to arguments")
-  | _ ->
-     failwith "render_remote: unknown remote call"
-
+  | _ -> failwith "render_remote: unknown remote call"
 
 (* Application [MLapp (f, [a1;...;an])]: flatten the spine, then
    dispatch on the head *)
@@ -276,8 +275,7 @@ and trans_apply ctx a =
           apply_callee ctx what
             (fun a -> EApply (CGlobal (m, f), a))
             arity 0 args
-      | Some (Local_var _, _, _) ->
-         failwith "remote call: apply to a local var"
+      | Some (Local_var _, _, _) -> failwith "remote call: apply to a local var"
       | None ->
           (* unknown global: a plain remote call *)
           EApply
@@ -325,16 +323,14 @@ and trans_global ctx r =
         ( vars,
           Cerlang.EApply
             (Cerlang.CGlobal (m, f), List.map (fun w -> Cerlang.EVar w) vars) )
-  | Some (Local_var _, _, _) ->
-     failwith "trans_global: apply to local var"
+  | Some (Local_var _, _, _) -> failwith "trans_global: apply to local var"
   | Some (Remote Cenative.NotNative, _, _) ->
-     failwith "trans_global: apply to NotNative"
+      failwith "trans_global: apply to NotNative"
   | None -> (
       (* not one of ours and not native: extraction should have pulled
        every dependency in, so this is an error *)
       match Cenative.call_arity r with
-      | Some _ ->
-         failwith "trans_global: impossible, it would be a NativeCall"
+      | Some _ -> failwith "trans_global: impossible, it would be a NativeCall"
       | None ->
           CErrors.user_err
             Pp.(
@@ -378,7 +374,9 @@ and trans_fun ctx a =
   in
   match trans_expr ctx body with
   | Cerlang.EFunRef (f, n) when n > 0 ->
-      expand_eta (Cerlang.CExpr (Cerlang.EFunRef (f, n))) n
+      expand_eta
+        (Cerlang.CExpr (Cerlang.EFunRef (f, n)))
+        n
         "lambda reduced to a bare function reference by extraction's \
          eta-contraction, re-expanded"
   | Cerlang.EFun (extra, Cerlang.EApply ((Cerlang.CGlobal _ as c), args))
@@ -502,20 +500,7 @@ and trans_case ctx t branches =
         end
         else (trans_pattern pat names, guard_true, trans_expr ctx' body))
   in
-  (* a compiler-generated last clause: a non-matching scrutinee raises
-     {'badmatch', Scrutinee} instead of a bare case failure *)
-  let fallback =
-    ( Cerlang.PVar v,
-      guard_true,
-      Cerlang.EApply
-        ( Cerlang.CPrimop (Cerlang.Atom "match_fail"),
-          [
-            Cerlang.ETuple
-              [ Cerlang.EAtom (Cerlang.Atom "badmatch"); Cerlang.EVar v ];
-          ] ) )
-  in
-  Cerlang.ELet
-    (v, trans_expr ctx t, Cerlang.ECase (Cerlang.EVar v, bs @ [ fallback ]))
+  Cerlang.ELet (v, trans_expr ctx t, Cerlang.ECase (Cerlang.EVar v, bs))
 
 and trans_fix ctx i ids defs =
   let k = Array.length ids in
@@ -551,10 +536,8 @@ and trans_fix ctx i ids defs =
   in
   let sel =
     match List.nth_opt fresh i with
-    | Some s ->
-       s
-    | None ->
-       failwith "trans_fix: argument overflow"
+    | Some s -> s
+    | None -> failwith "trans_fix: argument overflow"
   in
   Cerlang.ELetrec (bindings, Cerlang.EFunRef (fst sel, snd sel))
 

@@ -74,15 +74,13 @@ let rec group_of_module mp elems =
                 Pp.(
                   str
                     "CoreErlang extraction: functor modules are not \
-                     extractable (module-level functions do not exist in \
-                     Core Erlang)"
+                     extractable (module-level functions do not exist in Core \
+                     Erlang)"
                   ++ str " while extracting module "
                   ++ str (ModPath.to_string mp)))
       | SEmodtype _ -> (* signature-only *) ())
     elems;
-  { mg_name = Cerlang.Atom (ModPath.to_string mp);
-    mg_decls = List.rev !decls
-  }
+  { mg_name = Cerlang.Atom (ModPath.to_string mp); mg_decls = List.rev !decls }
   :: List.concat (List.rev !subs)
 
 (* -------------------------------------------------------------------- *)
@@ -153,10 +151,14 @@ let translate_funs ?(exported = KerName.Set.empty)
     List.concat_map (fundefs_of_decl is_exported) decls
     |> List.filter (fun fd -> not (Cenative.is_native_kn fd.fd_kn))
     |> List.map (fun fd ->
-        (match fd.fd_name with Cerlang.Atom n -> Cetrans.current_function := n);
+        (match fd.fd_name with
+        | Cerlang.Atom n -> Cetrans.current_function := n);
         let ctx =
-          { Cetrans.env = fd.fd_group; funs = !funs; cur_module = m;
-            counter = ref 0
+          {
+            Cetrans.env = fd.fd_group;
+            funs = !funs;
+            cur_module = m;
+            counter = ref 0;
           }
         in
         let ctx, params =
@@ -180,7 +182,8 @@ let translate_funs ?(exported = KerName.Set.empty)
           | _ -> (params, body)
         in
         (* later declarations must see the promoted arity *)
-        funs := KerName.Map.add fd.fd_kn (m, fd.fd_name, List.length params) !funs;
+        funs :=
+          KerName.Map.add fd.fd_kn (m, fd.fd_name, List.length params) !funs;
         {
           Cerlang.fun_name = fd.fd_name;
           fun_params = List.rev params;
@@ -202,18 +205,19 @@ let translate_funs ?(exported = KerName.Set.empty)
    but stay internal, i.e. absent from the module export list. *)
 let translate_structure ~(modname : Cerlang.atom)
     ?(exported = KerName.Set.empty) ?(internal = KerName.Set.empty)
-    ?(mode = Monolithic) struc :
-    Cerlang.module_ list =
+    ?(mode = Monolithic) struc : Cerlang.module_ list =
   let groups =
     match mode with
     | Monolithic ->
-        [ { mg_name = modname;
-            mg_decls = List.concat_map (fun (_, elems) -> decls_of_elems elems) struc
-          } ]
+        [
+          {
+            mg_name = modname;
+            mg_decls =
+              List.concat_map (fun (_, elems) -> decls_of_elems elems) struc;
+          };
+        ]
     | Separate ->
-        List.concat_map
-          (fun (mp, elems) -> group_of_module mp elems)
-          struc
+        List.concat_map (fun (mp, elems) -> group_of_module mp elems) struc
   in
   (* pass 1: initial arities (from the leading lambdas), all modules *)
   let funs = ref KerName.Map.empty in
