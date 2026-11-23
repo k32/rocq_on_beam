@@ -7,4 +7,5 @@
   (synopsis "Extraction of Rocq to Erlang")
   (depends
     ocaml
-    (rocq-core (>= 9.4))))
+    coq-libtx-storage
+    (rocq-prover (>= 9.4))))

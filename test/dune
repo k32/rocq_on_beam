@@ -1,3 +1,2 @@
 (cram
- (deps %{lib:rocq_on_beam:rocq_on_beam_plugin.cmxs}
-       ../theories/erlang.v))
+ (deps %{lib:rocq_on_beam:rocq_on_beam_plugin.cmxs} ../theories/erlang.v))

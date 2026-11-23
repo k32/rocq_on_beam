@@ -11,7 +11,3 @@ DECLARE PLUGIN "rocq_on_beam"
 {
 open Erlang
 }
-
-VERNAC COMMAND EXTEND ErlangSimpleExtraction CLASSIFIED AS QUERY STATE opaque_access
-| [ "Erlang" "Simple" "Extraction" global(r) ] -> { vernac_simple_extraction r }
-END

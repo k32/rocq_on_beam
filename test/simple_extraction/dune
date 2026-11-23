@@ -1,0 +1,5 @@
+(cram
+ (deps
+  %{lib:rocq_on_beam:rocq_on_beam_plugin.cmxs}
+  ;%{lib:rocq_on_beam:theories/erlang.vo}
+  simple.v))
