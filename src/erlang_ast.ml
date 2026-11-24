@@ -56,7 +56,7 @@ type e_defn = {
 type e_module = {
     name : atom;
     exports : e_local list;
-    locals : e_defn list
+    locals : e_defn array
 }
 
 let escape_atom s =
@@ -143,6 +143,10 @@ let pr_toplevel = function
      let decl = h (pr_atom name ++ surround args ++ str " ->") in
      v 2 (decl ++ cut () ++ pr_ast ast ++ str ".")
 
+let pr_toplevels fns =
+  let sep _ = brk (0, -1000) ++ cut () in
+  v 0 (prvect_with_sep sep pr_toplevel fns)
+
 let pr_mod_preamble m =
   h (str "-module" ++ surround (pr_atom m) ++ str ".") ++ fnl ()
 
@@ -154,45 +158,6 @@ let pr_exports e =
 
 let pr_module = function
   | {name = m; exports = e; locals = fns} ->
-     let sep _ = brk (0, -1000) ++ cut () in
      pr_mod_preamble m ++
        pr_exports e ++
-       v 0 (prlist_with_sep sep pr_toplevel fns)
-
-(* testing - remove *)
-
-let test_nil = EConstr (ELit ENil)
-
-let test_bin str = ELit (EBinary (String.to_bytes str))
-
-let test_binp str : e_pattern = ELit (EBinary (String.to_bytes str))
-
-let ast1 a = ELet ((Var 1000),
-                   (EConstr (ETuple [ECons (test_bin "aaaa", (ELit ENil));
-                                     EVar (Var 2);
-                                     ELit (EFunRefG (Atom "Foo.bar", Atom "handle_call", 3));
-                                     ELit (EFunRefL (Atom "handle'_call", 3));
-                                     ELit (EBinary (String.to_bytes "aafadsfasdf"));
-                                     ELit (EFloat (Float64.of_float 0.1))]
-                   )), a)
-
-
-let test_case b =
-  ECase (EConstr (EVar (Var 1)),
-         [(test_binp "", ast1 b);
-          (EMap [test_binp "bar", EWildcard], test_nil);
-          (EWildcard, ast1 b)])
-
-let test_fun b = EFun ([Var 2; Var 1], test_case b)
-
-let test_mod =
-  let ast = test_fun (test_fun (ast1 (ast1 test_nil))) in
-  {
-    name = Atom "MyMod.foo";
-    exports = [(Atom "foooooooooooooooo", 2); (Atom "baaaaaaaaaaaaaaaaaaaaaaaaaaaar", 3); (Atom "bafffffz", 4)];
-    locals = [{name = Atom "foo"; args = [Var 1; Var 2; Var 3]; ast = ast};
-              {name = Atom "foo"; args = [Var 1; Var 2; Var 3]; ast = ast}
-             ]
-  }
-
-let test x = print_endline (string_of_ppcmds x)
+       pr_toplevels fns
