@@ -47,9 +47,16 @@ and e_ast =
   | EFun of var list * e_ast
   | EFix of var * var list * e_ast
 
+type e_defn = {
+    name : atom;
+    args : var list;
+    ast : e_ast;
+}
+
 type e_module = {
+    name : atom;
     exports : e_local list;
-    locals : (e_local * e_ast) list
+    locals : e_defn list
 }
 
 let escape_atom s =
@@ -108,8 +115,8 @@ let pr_callee = function
   | ECallV v -> pr_var v
 
 let pr_block preamble body =
-  h (v 2 (preamble ++ brk (0, 0) ++ body) ++
-       fnl () ++ str "end" ++ brk (1, 0))
+  h (v 2 (preamble ++ cut () ++ body) ++
+       fnl () ++ str "end" ++ cut ())
 
 let rec pr_ast = function
   | EConstr c -> pr_constr c
@@ -121,7 +128,7 @@ let rec pr_ast = function
   | ECase (scrutinee, branches) ->
      let preamble = str "case " ++ pr_ast scrutinee ++ str " of" in
      let br_sep () = str ";" ++ fnl () in
-     let pr_branch (pat, ast) = v 2 (pr_pattern pat ++ str " ->" ++ brk (0, 0) ++ pr_ast ast) in
+     let pr_branch (pat, ast) = v 2 (pr_pattern pat ++ str " ->" ++ cut () ++ pr_ast ast) in
      pr_block preamble (prlist_with_sep br_sep pr_branch branches)
   | EFun (args, body) ->
      let preamble = str "fun" ++ surround (prlist_with_sep pr_comma pr_var args) ++ str " ->" in
@@ -129,6 +136,28 @@ let rec pr_ast = function
   | EFix (name, args, body) ->
      let preamble = str "fun " ++ pr_var name ++ surround (prlist_with_sep pr_comma pr_var args) ++ str " ->" in
      pr_block preamble (pr_ast body)
+
+let pr_toplevel = function
+  | {name; args; ast} ->
+     let args = prlist_with_sep pr_comma pr_var args in
+     let decl = h (pr_atom name ++ surround args ++ str " ->") in
+     v 2 (decl ++ cut () ++ pr_ast ast ++ str ".")
+
+let pr_mod_preamble m =
+  h (str "-module" ++ surround (pr_atom m) ++ str ".") ++ fnl ()
+
+let pr_exports e =
+  let pr_export (f, a) = h (pr_atom f ++ str "/" ++ int a) in
+  let el = prlist_with_sep pr_comma pr_export e in
+  let e = str "-export([" ++ hv 0 (el ++ cut () ++ str "]).") in
+  v 0 (e ++ brk (0, -1000) ++ cut ())
+
+let pr_module = function
+  | {name = m; exports = e; locals = fns} ->
+     let sep _ = brk (0, -1000) ++ cut () in
+     pr_mod_preamble m ++
+       pr_exports e ++
+       v 0 (prlist_with_sep sep pr_toplevel fns)
 
 (* testing - remove *)
 
@@ -156,4 +185,14 @@ let test_case b =
 
 let test_fun b = EFun ([Var 2; Var 1], test_case b)
 
-let test x = print_endline (string_of_ppcmds (pr_ast x))
+let test_mod =
+  let ast = test_fun (test_fun (ast1 (ast1 test_nil))) in
+  {
+    name = Atom "MyMod.foo";
+    exports = [(Atom "foooooooooooooooo", 2); (Atom "baaaaaaaaaaaaaaaaaaaaaaaaaaaar", 3); (Atom "bafffffz", 4)];
+    locals = [{name = Atom "foo"; args = [Var 1; Var 2; Var 3]; ast = ast};
+              {name = Atom "foo"; args = [Var 1; Var 2; Var 3]; ast = ast}
+             ]
+  }
+
+let test x = print_endline (string_of_ppcmds x)
