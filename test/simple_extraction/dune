@@ -2,5 +2,6 @@
  (deps %{lib:rocq_on_beam:rocq_on_beam_plugin.cmxs}
        %{lib:rocq_on_beam:META}
        constr.v
-       local_lambdas.v
+       var_uniq.v
+       eta.v
        mutual_fix.v))

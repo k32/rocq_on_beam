@@ -16,8 +16,3 @@ t_mutual_fix2 a :=
   end.
 
 Extraction t_mutual_fix.
-
-Definition t_apply_var {T : Set} (f : T -> T) (x : T) :=
-  f (f x).
-
-Extraction t_apply_var.

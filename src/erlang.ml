@@ -73,8 +73,9 @@ let mlconstr_name = function
 (* Key-value list used to lookup arity of locally defined lambdas.
    Arguments of the top-level definition are [None],
    as we don't have the info about them.
-   [None] skips the check and assumes that arity of the callback =
-   number of the applied arguments, i.e. the value is properly curried *)
+   [None] skips the arity check and eta-conversion,
+   and assumes that arity of the callback = number of the applied arguments,
+   i.e. the value is properly curried *)
 type loc_arity = (var * int option) list
 
 (* Context used during translation of top-level functions *)
@@ -106,8 +107,14 @@ let lookup_var {scope = sc} idx =
               str " in scope " ++ prlist_with_sep spc pr_var sc)
 
 let mlvar_to_name = function
-  | Dummy -> ""
-  | Id i | Tmp i -> Id.to_string i
+  | Dummy ->
+     ""
+  | Id i | Tmp i ->
+     let str = Id.to_string i in
+     if String.for_all Char.Ascii.is_alphanum str then
+       str
+     else
+       ""
 
 let ctx_fresh_id {var_ctr = ctr} =
   let fresh = !ctr in
@@ -129,7 +136,7 @@ let push_lams ctx ast =
   let (vars, ctx, ast) = go ctx [] ast in
   (ctx, List.rev vars, ast)
 
-(* Add a new variable to the context *)
+(* Add a new variable into the context *)
 let push_var id ctx =
   let fresh = ctx_fresh_id ctx in
   let evar = Var (mlvar_to_name id, fresh) in
@@ -242,9 +249,9 @@ let rec ml_to_erlang table ctx bound_to all_ast =
   | MLfloat netyx ->
      ELit (EFloat netyx)
   | MLletin (ident, val_ast, in_ast) ->
-     let (v, ctx) = push_var ident ctx in
+     let (v, ctx') = push_var ident ctx in
      let value = ml_to_erlang table ctx (Some v) val_ast in
-     ELet (v, value, ml_to_erlang table ctx None in_ast)
+     ELet (v, value, ml_to_erlang table ctx' None in_ast)
   | MLapp (callee, args) ->
      tr_app table ctx callee args
   | MLcase (tp, scrutinee, branches) ->
