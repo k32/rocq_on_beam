@@ -2,20 +2,40 @@ Declare ML Module "rocq_on_beam".
 Require Extraction.
 Extraction Language Erlang.
 
-Definition foo :=
-  1.
+From Stdlib Require Import List.
+Import ListNotations.
 
-Extraction foo.
+Definition t_nat :=
+  2.
 
-Fixpoint bar (a : nat) :=
+Extraction t_nat.
+
+Definition t_list :=
+  [0; 0].
+
+Extraction t_list.
+
+Fixpoint t_mutual_fix (a : nat) :=
+  let x := a + 1 in
+  match a with
+  | O => x
+  | S a => t_mutual_fix2 a
+  end
+with
+t_mutual_fix2 a :=
   match a with
   | O => O
-  | S a => baz a
-  end
-with baz a :=
-       match a with
-       | O => O
-       | S a => bar a
-       end.
+  | S a => t_mutual_fix a
+  end.
 
-Extraction bar.
+Extraction t_mutual_fix.
+
+Definition t_apply_var {T : Set} (f : T -> T) (x : T) :=
+  f (f x).
+
+Extraction t_apply_var.
+
+Definition t_gfun_ref := plus.
+
+(* Function refs aren't supported currently. Must fail *)
+Fail Extraction t_gfun_ref.

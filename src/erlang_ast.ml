@@ -5,7 +5,7 @@ open Pp
 
 type atom = Atom of string
 
-type var = Var of int
+type var = Var of string * int
 
 type e_local = atom * int
 
@@ -17,22 +17,16 @@ type e_literal =
   | EBinary of bytes
   | EFunRefL of e_local
   | EFunRefG of e_global
+  | EAtom of atom
   | ENil
 
-type e_constr =
-  | ELit of e_literal
-  | EVar of var
-  | ECons of e_constr * e_constr
-  | ETuple of e_constr list
-  | EMap of (e_constr * e_constr) list
-
 and e_pattern =
-  | EWildcard
-  | ELit of e_literal
-  | EVar of var
-  | ECons of e_pattern * e_pattern
-  | ETuple of e_pattern list
-  | EMap of (e_pattern * e_pattern) list
+  | EPWildcard
+  | EPLit of e_literal
+  | EPVar of var
+  | EPCons of e_pattern * e_pattern
+  | EPTuple of e_pattern list
+  | EPMap of (e_pattern * e_pattern) list
 
 and e_callee =
   | ECallL of e_local
@@ -40,7 +34,11 @@ and e_callee =
   | ECallV of var
 
 and e_ast =
-  | EConstr of e_constr
+  | ELit of e_literal
+  | EVar of var
+  | ECons of e_ast * e_ast
+  | ETuple of e_ast list
+  | EMap of (e_ast * e_ast) list
   | EApply of e_callee * e_ast list
   | ELet of var * e_ast * e_ast
   | ECase of e_ast * (e_pattern * e_ast) list
@@ -82,30 +80,21 @@ let pr_literal = function
      h (str "fun " ++ pr_atom m ++ str ":" ++ pr_atom f ++ str "/" ++ int a)
   | ENil ->
      str "[]"
+  | EAtom a ->
+     pr_atom a
 
 let pr_var = function
-  | Var v -> str "_" ++ int v
-
-let rec pr_constr = function
-  | ELit l -> pr_literal l
-  | EVar v -> pr_var v
-  | ECons (hd, tl) ->
-     hv 1 (str "[" ++ pr_constr hd ++ pr_spcbar () ++ pr_constr tl ++ str "]")
-  | ETuple l ->
-     hv 1 (str "{" ++ prlist_with_sep pr_comma pr_constr l ++ str "}")
-  | EMap l ->
-     let pr_assoc (k, v) = pr_constr k ++ str " => " ++ pr_constr v in
-     hv 2 (str "#{" ++ prlist_with_sep pr_comma pr_assoc l ++ str "}")
+  | Var (name, v) -> h (str "_" ++ str name ++ str "@" ++ int v)
 
 let rec pr_pattern = function
-  | EWildcard -> str "_"
-  | ELit l -> pr_literal l
-  | EVar v -> pr_var v
-  | ECons (hd, tl) ->
+  | EPWildcard -> str "_"
+  | EPLit l -> pr_literal l
+  | EPVar v -> pr_var v
+  | EPCons (hd, tl) ->
      str "[" ++ pr_pattern hd ++ pr_spcbar () ++ pr_pattern tl ++ str "]"
-  | ETuple l ->
+  | EPTuple l ->
      hv 1 (str "{" ++ prlist_with_sep pr_comma pr_pattern l ++ str "}")
-  | EMap l ->
+  | EPMap l ->
      let pr_assoc (k, v) = pr_pattern k ++ str " := " ++ pr_pattern v in
      hv 2 (str "#{" ++ prlist_with_sep pr_comma pr_assoc l ++ str "}")
 
@@ -119,7 +108,15 @@ let pr_block preamble body =
        fnl () ++ str "end" ++ cut ())
 
 let rec pr_ast = function
-  | EConstr c -> pr_constr c
+  | ELit l -> pr_literal l
+  | EVar v -> pr_var v
+  | ECons (hd, tl) ->
+     hv 1 (str "[" ++ pr_ast hd ++ pr_spcbar () ++ pr_ast tl ++ str "]")
+  | ETuple l ->
+     hv 1 (str "{" ++ prlist_with_sep pr_comma pr_ast l ++ str "}")
+  | EMap l ->
+     let pr_assoc (k, v) = pr_ast k ++ str " => " ++ pr_ast v in
+     hv 2 (str "#{" ++ prlist_with_sep pr_comma pr_assoc l ++ str "}")
   | EApply (callee, args) ->
      pr_callee callee ++ surround (prlist_with_sep pr_comma pr_ast args)
   | ELet (v, a, rest) ->
