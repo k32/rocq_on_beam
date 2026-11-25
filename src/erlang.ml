@@ -70,12 +70,19 @@ let mlconstr_name = function
   | MLstring _ -> "MLstring"
   | MLparray (_, _) -> "MLparray"
 
+(* Key-value list used to lookup arity of locally defined lambdas.
+   Arguments of the top-level definition are [None],
+   as we don't have the info about them.
+   [None] skips the check and assumes that arity of the callback =
+   number of the applied arguments, i.e. the value is properly curried *)
+type loc_arity = (var * int option) list
+
 (* Context used during translation of top-level functions *)
 type ctx = {
-    (* Arities of previous top-level definitions *)
+    (* Arities of previously extracted top-level definitions *)
     top_arity : int KerName.Map.t;
     (* Local lambda arities *)
-    local_arity : (var * int) list;
+    local_arity : loc_arity ref;
     (* Function that is being extracted: *)
     this_function : global;
     (* Counter used to add prefix to the new variables.
@@ -173,6 +180,9 @@ let push_arity gl ast =
   let arity = go 0 ast in
   KerName.Map.add (Table.repr_of_r gl) arity
 
+let push_loc_arity var arity {local_arity = l} =
+  l := (var, arity) :: !l
+
 let gl_arity {top_arity = m} gl =
   match KerName.Map.find_opt (Table.repr_of_r gl) m with
   | Some a ->
@@ -182,15 +192,13 @@ let gl_arity {top_arity = m} gl =
 
 let loc_arity ctx idx =
   let var = lookup_var ctx idx in
-  match List.find_opt (fun (i, _) -> i = var) ctx.local_arity with
+  let l = !(ctx.local_arity) in
+  match List.find_opt (fun (i, _) -> i = var) l with
   | Some (_, a) ->
      a
   | None ->
-     (* FIXME! bug *)
-     Feedback.msg_info
-       (str "Reference to an unknown local function " ++ pr_var var ++
-          str ". Bound: " ++ prlist_with_sep spc (fun (v, _) -> pr_var v) ctx.local_arity);
-     1
+     panic (str "Reference to an unknown local function " ++ pr_var var ++
+              str ". Bound: " ++ prlist_with_sep spc (fun (v, _) -> pr_var v) l)
 
 let is_local {this_function = this} gl =
   let m = Table.modpath_of_r gl in
@@ -233,10 +241,10 @@ let rec ml_to_erlang table ctx bound_to all_ast =
      ELit (EInt (Z.of_int64 (Uint63.to_int64 int)))
   | MLfloat netyx ->
      ELit (EFloat netyx)
-  | MLletin (ident, value, ast) ->
-     let value = ml_to_erlang table ctx None value in
+  | MLletin (ident, val_ast, in_ast) ->
      let (v, ctx) = push_var ident ctx in
-     ELet (v, value, ml_to_erlang table ctx (Some v) ast)
+     let value = ml_to_erlang table ctx (Some v) val_ast in
+     ELet (v, value, ml_to_erlang table ctx None in_ast)
   | MLapp (callee, args) ->
      tr_app table ctx callee args
   | MLcase (tp, scrutinee, branches) ->
@@ -248,13 +256,7 @@ let rec ml_to_erlang table ctx bound_to all_ast =
   | MLfix  (i, ids, defs) ->
      unsup "MLfix"
   | MLlam (_, _) ->
-     let (ctx, vars, ast) = push_lams ctx all_ast in
-     let ctx = (match bound_to with
-                | None ->
-                   ctx
-                | Some var ->
-                   {ctx with local_arity = (var, List.length vars) :: ctx.local_arity }) in
-     EFun (vars, ml_to_erlang table ctx None ast)
+     tr_lam table ctx bound_to all_ast
   | MLexn str ->
      unsup "MLexn"
   | MLdummy kill_reason ->
@@ -271,6 +273,15 @@ let rec ml_to_erlang table ctx bound_to all_ast =
 and tr_case table ctx bound_to tp scrutinee branches =
   ECase (ml_to_erlang table ctx None scrutinee,
          List.map (tr_branch table ctx) (Array.to_list branches))
+
+and tr_lam table ctx bound_to ast =
+  let (ctx, vars, ast) = push_lams ctx ast in
+  (match bound_to with
+   | None ->
+      ()
+   | Some var ->
+      push_loc_arity var (Some (List.length vars)) ctx);
+  EFun (vars, ml_to_erlang table ctx None ast)
 
 and tr_global ctx gl =
   (* TODO: distinguish global / local fun references - this is
@@ -305,7 +316,14 @@ and tr_app table ctx callee args =
                     arity) in
            (ECallG t, arity))
     | MLrel var ->
-       let arity = loc_arity ctx var in
+       let arity = (match loc_arity ctx var with
+                    | Some a ->
+                       a
+                    | None ->
+                       (* This is a callback passed in an argument of the toplevel definition.
+                          We don't have the data to check its arity -
+                          *assuming* it to be properly uncurried. *)
+                       List.length args) in
        (ECallV (lookup_var ctx var), arity)
     | what ->
        panic (str "Unsupported type of callee " ++ str (mlconstr_name what))
@@ -324,12 +342,13 @@ and tr_constructor table ctx gl args =
 let decl_to_erlang ar_map table gl ast tp =
   let name = label_of_global gl in
   let ctx = { top_arity = ar_map;
-              local_arity = [];
+              local_arity = ref [];
               this_function = gl;
               var_ctr = ref 0;
               scope = []
             } in
   let (ctx, vars, ast) = push_lams ctx ast in
+  List.iter (fun v -> push_loc_arity v None ctx) vars;
   { name = Atom (Id.to_string name);
     args = vars;
     ast = ml_to_erlang table ctx None ast
