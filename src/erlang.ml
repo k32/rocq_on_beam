@@ -50,29 +50,58 @@ let unsup what = ELit (EAtom (Atom ("Not supported: " ^ what)))
 
 let panic what = CErrors.user_err Pp.(what)
 
+(* Format constructor name for debugging *)
+let mlconstr_name = function
+  | MLcons (_, _, _) -> "MLcons"
+  | MLtuple _ -> "MLtuple"
+  | MLuint _ -> "MLuint"
+  | MLfloat _ -> "MLfloat"
+  | MLletin (_, _, _) -> "MLletin"
+  | MLapp (_, _) -> "MLapp"
+  | MLcase (_, _, _) -> "MLcase"
+  | MLrel _ -> "MLrel"
+  | MLglob _ -> "MLglob"
+  | MLfix  (_, _, _) -> "MLfix"
+  | MLlam (_, _) -> "MLlam"
+  | MLexn _ -> "MLexn"
+  | MLdummy _ -> "MLdummy"
+  | MLaxiom _ -> "MLaxiom"
+  | MLmagic _ -> "MLmagic"
+  | MLstring _ -> "MLstring"
+  | MLparray (_, _) -> "MLparray"
+
+(* Context used during translation of top-level functions *)
 type ctx = {
     (* Arities of previous top-level definitions *)
     top_arity : int KerName.Map.t;
+    (* Local lambda arities *)
+    local_arity : (var * int) list;
+    (* Module that the definition belongs to.
+       Used to derive whether function references and calls are global or local *)
     this_module : ModPath.t;
+    (* Counter used to add prefix to the new variables *)
     var_ctr : int;
     (* Variables in the scope, for resolving de Brujin indices. Innermost first *)
     scope : var list;
   }
 
+(* Resolve a de Brujin index into a variable name *)
 let lookup_var {scope = sc} idx =
   let idx = idx - 1 in (* de Brujin indices in MiniML are 1-based *)
   match List.nth_opt sc idx with
   | Some v ->
      v
   | None ->
-     panic (str "de Brujin index " ++ int idx)
+     panic (str "de Brujin index overflow: " ++ int idx ++
+              str " in scope " ++ prlist_with_sep spc pr_var sc)
 
 let mlvar_to_name = function
   | Dummy -> ""
   | Id i | Tmp i -> Id.to_string i
 
 (* Iterate over nested lambdas, adding variables into the context.
-   Return arity (number of nested lambdas), updated context and the body *)
+   Return the updated context, list of variables in the Erlang AST format (outermost first)
+   and the body of the innermost lambda *)
 let push_lams ctx ast =
   let rec go ctx vars = function
     | MLlam (id, ast) ->
@@ -88,6 +117,7 @@ let push_lams ctx ast =
   let (vars, ctx, ast) = go ctx [] ast in
   (ctx, List.rev vars, ast)
 
+(* Add a new variable to the context *)
 let push_var id ctx =
   match ctx with
     {var_ctr = ctr; scope = scope} ->
@@ -136,7 +166,6 @@ let global_name (r : global) =
   | None -> s
   | Some code -> s ^ "_" ^ code
 
-
 let push_arity gl ast =
   let rec go acc = function
     | MLlam (_, ast) ->
@@ -153,6 +182,18 @@ let gl_arity {top_arity = m} gl =
   | None ->
      panic (str "Reference to an unknown top-level function " ++ str (global_name gl))
 
+let loc_arity ctx idx =
+  let var = lookup_var ctx idx in
+  match List.find_opt (fun (i, _) -> i = var) ctx.local_arity with
+  | Some (_, a) ->
+     a
+  | None ->
+     (* FIXME! bug *)
+     Feedback.msg_info
+       (str "Reference to an unknown local function " ++ pr_var var ++
+          str ". Bound: " ++ prlist_with_sep spc (fun (v, _) -> pr_var v) ctx.local_arity);
+     1
+
 let is_local {this_module = this} gl =
   let m = Table.modpath_of_r gl in
   if ModPath.equal this m then
@@ -160,7 +201,7 @@ let is_local {this_module = this} gl =
   else
     Some m
 
-(* Translate match pattern.
+(* Translate a match pattern.
    [evars] is a list of Erlang variables bound by the original top level branch *)
 let rec tr_pattern ctx evars = function
   | Pcons (gl, args) ->
@@ -184,25 +225,24 @@ let rec tr_pattern ctx evars = function
      | l ->
         EPTuple (tag :: List.map (fun i -> EPVar i) l)
 
-let rec ml_to_erlang table ctx all_ast =
+let rec ml_to_erlang table ctx bound_to all_ast =
   match all_ast with
   | MLcons (tp, gl, args) ->
      trans_constructor table ctx gl args
   | MLtuple elems ->
-     ETuple (List.map (ml_to_erlang table ctx) elems)
+     ETuple (List.map (ml_to_erlang table ctx None) elems)
   | MLuint int ->
      ELit (EInt (Z.of_int64 (Uint63.to_int64 int)))
   | MLfloat netyx ->
      ELit (EFloat netyx)
   | MLletin (ident, value, ast) ->
-     let value = ml_to_erlang table ctx value in
+     let value = ml_to_erlang table ctx None value in
      let (v, ctx) = push_var ident ctx in
-     ELet (v, value, ml_to_erlang table ctx ast)
+     ELet (v, value, ml_to_erlang table ctx (Some v) ast)
   | MLapp (callee, args) ->
      trans_app table ctx callee args
   | MLcase (tp, scrutinee, branches) ->
-     ECase (ml_to_erlang table ctx scrutinee,
-            List.map (trans_branch table ctx) (Array.to_list branches))
+     tr_case table ctx bound_to tp scrutinee branches
   | MLrel idx ->
      EVar (lookup_var ctx idx)
   | MLglob gl ->
@@ -211,7 +251,12 @@ let rec ml_to_erlang table ctx all_ast =
      unsup "MLfix"
   | MLlam (_, _) ->
      let (ctx, vars, ast) = push_lams ctx all_ast in
-     EFun (vars, ml_to_erlang table ctx ast)
+     let ctx = (match bound_to with
+                | None ->
+                   ctx
+                | Some var ->
+                   {ctx with local_arity = (var, List.length vars) :: ctx.local_arity }) in
+     EFun (vars, ml_to_erlang table ctx None ast)
   | MLexn str ->
      unsup "MLexn"
   | MLdummy kill_reason ->
@@ -224,6 +269,11 @@ let rec ml_to_erlang table ctx all_ast =
      unsup "MLstring"
   | MLparray (asts, ast) ->
      unsup "MLparray"
+
+and tr_case table ctx bound_to tp scrutinee branches =
+  ECase (ml_to_erlang table ctx None scrutinee,
+         List.map (trans_branch table ctx) (Array.to_list branches))
+
 
 and tr_global ctx gl =
   (* TODO: distinguish global / local fun references - this is
@@ -240,7 +290,7 @@ and tr_global ctx gl =
 and trans_branch table ctx (vars, pat, ast) =
   let (evars, ctx) = push_vars ctx vars in
   ( tr_pattern ctx evars pat
-  , ml_to_erlang table ctx ast
+  , ml_to_erlang table ctx None ast
   )
 
 and trans_app table ctx callee args =
@@ -258,14 +308,13 @@ and trans_app table ctx callee args =
                     arity) in
            (ECallG t, arity))
     | MLrel var ->
-       (* FIXME: arity *)
-       let arity = List.length args in
+       let arity = loc_arity ctx var in
        (ECallV (lookup_var ctx var), arity)
-    | _ ->
-       panic (str "Unknown apply")
+    | what ->
+       panic (str "Unsupported type of callee " ++ str (mlconstr_name what))
   in
   (* FIXME: eta conversion *)
-  EApply (callee, List.map (ml_to_erlang table ctx) args)
+  EApply (callee, List.map (ml_to_erlang table ctx None) args)
 
 and trans_constructor table ctx gl args =
   let tag = ELit (EAtom (Atom (Id.to_string (label_of_global gl)))) in
@@ -273,12 +322,13 @@ and trans_constructor table ctx gl args =
   | [] ->
      tag
   | l ->
-     ETuple (tag :: List.map (ml_to_erlang table ctx) l)
+     ETuple (tag :: List.map (ml_to_erlang table ctx None) l)
 
 let decl_to_erlang ar_map table gl ast tp =
   let name = label_of_global gl in
   let thism = Table.modpath_of_r gl in
   let ctx = { top_arity = ar_map;
+              local_arity = [];
               this_module = thism;
               var_ctr = 0;
               scope = []
@@ -287,7 +337,7 @@ let decl_to_erlang ar_map table gl ast tp =
   let ctx = {ctx with top_arity = ar_map} in
   { name = Atom (Id.to_string name);
     args = vars;
-    ast = ml_to_erlang table ctx ast
+    ast = ml_to_erlang table ctx None ast
   }
 
 let pp_top_fun ar_map table gl ast tp =
