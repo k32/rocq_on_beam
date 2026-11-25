@@ -1,0 +1,18 @@
+#+TITLE: Rocq Extraction to Erlang
+
+* TODO Building
+
+This project relies on features that will be available in Rocq 9.4,
+which at the moment is not yet released.
+It means for the experiments with Erlang extraction Rocq should be build from source.
+
+This can be done as following:
+
+1. Clone the Rocq repo: https://github.com/rocq-prover/rocq
+2. Run
+
+#+begin_src sh
+make dunestrap
+dune build -p rocq-runtime,coq-core,rocq-core
+dune install --prefix=${HOME}/.local/ rocq-runtime coq-core rocq-core
+#+end_src
