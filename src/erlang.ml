@@ -226,7 +226,7 @@ let rec tr_pattern ctx evars = function
 let rec ml_to_erlang table ctx bound_to all_ast =
   match all_ast with
   | MLcons (tp, gl, args) ->
-     trans_constructor table ctx gl args
+     tr_constructor table ctx gl args
   | MLtuple elems ->
      ETuple (List.map (ml_to_erlang table ctx None) elems)
   | MLuint int ->
@@ -238,7 +238,7 @@ let rec ml_to_erlang table ctx bound_to all_ast =
      let (v, ctx) = push_var ident ctx in
      ELet (v, value, ml_to_erlang table ctx (Some v) ast)
   | MLapp (callee, args) ->
-     trans_app table ctx callee args
+     tr_app table ctx callee args
   | MLcase (tp, scrutinee, branches) ->
      tr_case table ctx bound_to tp scrutinee branches
   | MLrel idx ->
@@ -270,8 +270,7 @@ let rec ml_to_erlang table ctx bound_to all_ast =
 
 and tr_case table ctx bound_to tp scrutinee branches =
   ECase (ml_to_erlang table ctx None scrutinee,
-         List.map (trans_branch table ctx) (Array.to_list branches))
-
+         List.map (tr_branch table ctx) (Array.to_list branches))
 
 and tr_global ctx gl =
   (* TODO: distinguish global / local fun references - this is
@@ -285,13 +284,13 @@ and tr_global ctx gl =
   | None ->
      ELit (EFunRefL (Atom f, a))
 
-and trans_branch table ctx (vars, pat, ast) =
+and tr_branch table ctx (vars, pat, ast) =
   let (evars, ctx) = push_vars ctx vars in
   ( tr_pattern ctx evars pat
   , ml_to_erlang table ctx None ast
   )
 
-and trans_app table ctx callee args =
+and tr_app table ctx callee args =
   let (callee, arity) =
     match callee with
     | MLglob gl ->
@@ -314,7 +313,7 @@ and trans_app table ctx callee args =
   (* FIXME: eta conversion *)
   EApply (callee, List.map (ml_to_erlang table ctx None) args)
 
-and trans_constructor table ctx gl args =
+and tr_constructor table ctx gl args =
   let tag = ELit (EAtom (Atom (Id.to_string (label_of_global gl)))) in
   match args with
   | [] ->
@@ -365,7 +364,7 @@ let file_naming state mp = file_of_modfile (State.get_table state) mp
 let id_of_filename f =
   try Id.of_string f
   with CErrors.UserError _ ->
-    panic (str "Extraction: provided filename is not a valid identifier")
+    panic (str "Extraction: provided filename is not a valid identifier: " ++ quote (qstring f))
 
 let preamble table mod_name comment used_modules usf = str ""
 
