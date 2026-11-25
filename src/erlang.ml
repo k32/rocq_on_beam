@@ -91,15 +91,6 @@ let push_lams =
        (arity, ctx, ast) in
   go 0
 
-let push_arity gl ast =
-  let rec go acc = function
-    | MLlam (_, ast) ->
-       go (acc + 1) ast
-    | _ ->
-       acc in
-  let arity = go 0 ast in
-  KerName.Map.add (Table.repr_of_r gl) arity
-
 let push_var id ctx =
   match ctx with
     {var_ctr = ctr; scope = scope} ->
@@ -142,17 +133,28 @@ let label_of_global (r : global) : Id.t =
   | _ ->
      Table.label_of_r r
 
-let global_arity table (r : global) =
-  panic (str "inst " ++ if is_recursor table r then
-                          str "go"
-                        else
-                          str "oops")
-
 let global_name (r : global) =
   let s = Id.to_string (label_of_global r) in
   match InfvInst.encode r.inst with
   | None -> s
   | Some code -> s ^ "_" ^ code
+
+
+let push_arity gl ast =
+  let rec go acc = function
+    | MLlam (_, ast) ->
+       go (acc + 1) ast
+    | _ ->
+       acc in
+  let arity = go 0 ast in
+  KerName.Map.add (Table.repr_of_r gl) arity
+
+let gl_arity {top_arity = m} gl =
+  match KerName.Map.find_opt (Table.repr_of_r gl) m with
+  | Some a ->
+     a
+  | None ->
+     panic (str "Reference to an unknown top-level function " ++ str (global_name gl))
 
 let is_local {this_module = this} gl =
   let m = Table.modpath_of_r gl in
@@ -188,6 +190,8 @@ let rec tr_pattern ctx evars = function
 let rec ml_to_erlang table ctx = function
   | MLcons (tp, gl, args) ->
      trans_constructor table ctx gl args
+  | MLtuple elems ->
+     ETuple (List.map (ml_to_erlang table ctx) elems)
   | MLletin (ident, value, ast) ->
      let value = ml_to_erlang table ctx value in
      let (v, ctx) = push_var ident ctx in
@@ -200,13 +204,11 @@ let rec ml_to_erlang table ctx = function
   | MLrel idx ->
      EVar (lookup_var ctx idx).evar
   | MLglob gl ->
-     tr_global table gl
+     tr_global ctx gl
   | MLfix  (i, ids, defs) ->
      unsup "MLfix"
   | MLlam  (ident, ast) ->
      unsup "MLlam"
-  | MLtuple elems ->
-     ETuple (List.map (ml_to_erlang table ctx) elems)
   | MLexn str ->
      unsup "MLexn"
   | MLdummy kill_reason ->
@@ -224,12 +226,12 @@ let rec ml_to_erlang table ctx = function
   | MLparray (asts, ast) ->
      unsup "MLparray"
 
-and tr_global table gl =
+and tr_global ctx gl =
   (* TODO: distinguish global / local fun references - important in
      Erlang. Get arity from somewhere *)
   let m = ModPath.to_string (Table.modpath_of_r gl) in
   let f = global_name gl in
-  let a = global_arity table gl in
+  let a = gl_arity ctx gl in
   ELit (EFunRefG (Atom m, Atom f, a))
 
 and trans_branch table ctx (vars, pat, ast) =
@@ -242,8 +244,7 @@ and trans_app table ctx callee args =
   let (callee, arity) =
     match callee with
     | MLglob gl ->
-       (* FIXME: arity *)
-       let arity = 0 in
+       let arity = gl_arity ctx gl in
        (match is_local ctx gl with
         | None ->
            let t = (Atom (global_name gl), arity) in

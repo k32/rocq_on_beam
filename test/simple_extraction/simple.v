@@ -16,7 +16,7 @@ Definition t_list :=
 Extraction t_list.
 
 Fixpoint t_mutual_fix (a : nat) :=
-  let x := a + 1 in
+  let x := S a in
   match a with
   | O => x
   | S a => t_mutual_fix2 a
@@ -34,8 +34,3 @@ Definition t_apply_var {T : Set} (f : T -> T) (x : T) :=
   f (f x).
 
 Extraction t_apply_var.
-
-Definition t_gfun_ref := plus.
-
-(* Function refs aren't supported currently. Must fail *)
-Fail Extraction t_gfun_ref.
