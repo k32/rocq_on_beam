@@ -15,6 +15,12 @@ Definition t_list :=
 
 Extraction t_list.
 
+Definition t_local_lam (a : nat) :=
+  let f a := S a in
+  f (f a).
+
+Extraction t_local_lam.
+
 Fixpoint t_mutual_fix (a : nat) :=
   let x := S a in
   match a with

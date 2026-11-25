@@ -50,17 +50,13 @@ let unsup what = ELit (EAtom (Atom ("Not supported: " ^ what)))
 
 let panic what = CErrors.user_err Pp.(what)
 
-type scope_var = {
-    evar : var
-}
-
 type ctx = {
     (* Arities of previous top-level definitions *)
     top_arity : int KerName.Map.t;
     this_module : ModPath.t;
     var_ctr : int;
     (* Variables in the scope, for resolving de Brujin indices. Innermost first *)
-    scope : scope_var list;
+    scope : var list;
   }
 
 let lookup_var {scope = sc} idx =
@@ -77,19 +73,20 @@ let mlvar_to_name = function
 
 (* Iterate over nested lambdas, adding variables into the context.
    Return arity (number of nested lambdas), updated context and the body *)
-let push_lams =
-  let rec go arity ctx = function
+let push_lams ctx ast =
+  let rec go ctx vars = function
     | MLlam (id, ast) ->
        (match ctx with
           {var_ctr = ctr; scope = scope} ->
-          let new_var = {evar = Var (mlvar_to_name id, ctr)} in
+          let evar = Var (mlvar_to_name id, ctr) in
           let ctx = {ctx with
                       var_ctr = ctr + 1;
-                      scope = new_var :: scope} in
-          go (arity + 1) ctx ast)
+                      scope = evar :: scope} in
+          go ctx (evar :: vars) ast)
     | ast ->
-       (arity, ctx, ast) in
-  go 0
+       (vars, ctx, ast) in
+  let (vars, ctx, ast) = go ctx [] ast in
+  (ctx, List.rev vars, ast)
 
 let push_var id ctx =
   match ctx with
@@ -98,7 +95,7 @@ let push_var id ctx =
     ( evar
     , {ctx with
         var_ctr = ctr + 1;
-        scope = {evar = evar} :: scope}
+        scope = evar :: scope}
     )
 
 let rec push_vars ctx vars =
@@ -118,7 +115,7 @@ let push_fix ctx =
      ( evar,
        {ctx with
          var_ctr = ctr + 1;
-         scope = {evar = evar} :: scope
+         scope = evar :: scope
        }
      )
 
@@ -176,7 +173,7 @@ let rec tr_pattern ctx evars = function
   | Ptuple elems ->
      EPTuple (List.map (tr_pattern ctx evars) elems)
   | Prel idx ->
-     EPVar (lookup_var ctx idx).evar
+     EPVar (lookup_var ctx idx)
   | Pwild ->
      EPWildcard
   | Pusual gl ->
@@ -187,7 +184,8 @@ let rec tr_pattern ctx evars = function
      | l ->
         EPTuple (tag :: List.map (fun i -> EPVar i) l)
 
-let rec ml_to_erlang table ctx = function
+let rec ml_to_erlang table ctx all_ast =
+  match all_ast with
   | MLcons (tp, gl, args) ->
      trans_constructor table ctx gl args
   | MLtuple elems ->
@@ -206,13 +204,14 @@ let rec ml_to_erlang table ctx = function
      ECase (ml_to_erlang table ctx scrutinee,
             List.map (trans_branch table ctx) (Array.to_list branches))
   | MLrel idx ->
-     EVar (lookup_var ctx idx).evar
+     EVar (lookup_var ctx idx)
   | MLglob gl ->
      tr_global ctx gl
   | MLfix  (i, ids, defs) ->
      unsup "MLfix"
-  | MLlam  (ident, ast) ->
-     unsup "MLlam"
+  | MLlam (_, _) ->
+     let (ctx, vars, ast) = push_lams ctx all_ast in
+     EFun (vars, ml_to_erlang table ctx ast)
   | MLexn str ->
      unsup "MLexn"
   | MLdummy kill_reason ->
@@ -261,7 +260,7 @@ and trans_app table ctx callee args =
     | MLrel var ->
        (* FIXME: arity *)
        let arity = List.length args in
-       (ECallV (lookup_var ctx var).evar, arity)
+       (ECallV (lookup_var ctx var), arity)
     | _ ->
        panic (str "Unknown apply")
   in
@@ -284,10 +283,10 @@ let decl_to_erlang ar_map table gl ast tp =
               var_ctr = 0;
               scope = []
             } in
-  let (_arity, ctx, ast) = push_lams ctx ast in
+  let (ctx, vars, ast) = push_lams ctx ast in
   let ctx = {ctx with top_arity = ar_map} in
   { name = Atom (Id.to_string name);
-    args = List.map (fun i -> i.evar) (List.rev ctx.scope);
+    args = vars;
     ast = ml_to_erlang table ctx ast
   }
 
