@@ -192,6 +192,10 @@ let rec ml_to_erlang table ctx = function
      trans_constructor table ctx gl args
   | MLtuple elems ->
      ETuple (List.map (ml_to_erlang table ctx) elems)
+  | MLuint int ->
+     ELit (EInt (Z.of_int64 (Uint63.to_int64 int)))
+  | MLfloat netyx ->
+     ELit (EFloat netyx)
   | MLletin (ident, value, ast) ->
      let value = ml_to_erlang table ctx value in
      let (v, ctx) = push_var ident ctx in
@@ -217,22 +221,22 @@ let rec ml_to_erlang table ctx = function
      unsup "MLaxiom"
   | MLmagic ast ->
      unsup "MLmagic"
-  | MLuint int ->
-     unsup "MLuint"
-  | MLfloat netyx ->
-     unsup "MLfloat"
   | MLstring pstr ->
      unsup "MLstring"
   | MLparray (asts, ast) ->
      unsup "MLparray"
 
 and tr_global ctx gl =
-  (* TODO: distinguish global / local fun references - important in
-     Erlang. Get arity from somewhere *)
-  let m = ModPath.to_string (Table.modpath_of_r gl) in
+  (* TODO: distinguish global / local fun references - this is
+     semantically important in Erlang, as it affects hot code swap.
+     Possibly introduce a pseudo-BIF? *)
   let f = global_name gl in
   let a = gl_arity ctx gl in
-  ELit (EFunRefG (Atom m, Atom f, a))
+  match is_local ctx gl with
+  | Some m ->
+     ELit (EFunRefG (Atom (ModPath.to_string m), Atom f, a))
+  | None ->
+     ELit (EFunRefL (Atom f, a))
 
 and trans_branch table ctx (vars, pat, ast) =
   let (evars, ctx) = push_vars ctx vars in
