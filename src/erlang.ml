@@ -79,8 +79,12 @@ type ctx = {
     (* Module that the definition belongs to.
        Used to derive whether function references and calls are global or local *)
     this_module : ModPath.t;
-    (* Counter used to add prefix to the new variables *)
-    var_ctr : int;
+    (* Counter used to add prefix to the new variables.
+       It is mutable as to make all variables unique,
+       regadless of the AST traversal method.
+       This is critical to avoid unintended variable capture in the extracted Erlang,
+       because Erlang scoping rules are weird. *)
+    var_ctr : int ref;
     (* Variables in the scope, for resolving de Brujin indices. Innermost first *)
     scope : var list;
   }
@@ -99,19 +103,21 @@ let mlvar_to_name = function
   | Dummy -> ""
   | Id i | Tmp i -> Id.to_string i
 
+let ctx_fresh_id {var_ctr = ctr} =
+  let fresh = !ctr in
+  ctr := fresh + 1;
+  fresh
+
 (* Iterate over nested lambdas, adding variables into the context.
    Return the updated context, list of variables in the Erlang AST format (outermost first)
    and the body of the innermost lambda *)
 let push_lams ctx ast =
   let rec go ctx vars = function
     | MLlam (id, ast) ->
-       (match ctx with
-          {var_ctr = ctr; scope = scope} ->
-          let evar = Var (mlvar_to_name id, ctr) in
-          let ctx = {ctx with
-                      var_ctr = ctr + 1;
-                      scope = evar :: scope} in
-          go ctx (evar :: vars) ast)
+       let fresh = ctx_fresh_id ctx in
+       let evar = Var (mlvar_to_name id, fresh) in
+       let ctx = {ctx with scope = evar :: ctx.scope} in
+       go ctx (evar :: vars) ast
     | ast ->
        (vars, ctx, ast) in
   let (vars, ctx, ast) = go ctx [] ast in
@@ -119,14 +125,11 @@ let push_lams ctx ast =
 
 (* Add a new variable to the context *)
 let push_var id ctx =
-  match ctx with
-    {var_ctr = ctr; scope = scope} ->
-    let evar = Var (mlvar_to_name id, ctr) in
-    ( evar
-    , {ctx with
-        var_ctr = ctr + 1;
-        scope = evar :: scope}
-    )
+  let fresh = ctx_fresh_id ctx in
+  let evar = Var (mlvar_to_name id, fresh) in
+  ( evar
+  , {ctx with scope = evar :: ctx.scope}
+  )
 
 let rec push_vars ctx vars =
   let rec go ctx acc = function
@@ -139,15 +142,11 @@ let rec push_vars ctx vars =
   (List.rev evars, ctx)
 
 let push_fix ctx =
-  match ctx with
-    {var_ctr = ctr; scope = scope} ->
-     let evar = Var ("@fix", ctr) in
-     ( evar,
-       {ctx with
-         var_ctr = ctr + 1;
-         scope = evar :: scope
-       }
-     )
+  let fresh = ctx_fresh_id ctx in
+  let evar = Var ("@fix", fresh) in
+  ( evar,
+    {ctx with scope = evar :: ctx.scope}
+  )
 
 let label_of_global (r : global) : Id.t =
   match r.glob with
@@ -330,7 +329,7 @@ let decl_to_erlang ar_map table gl ast tp =
   let ctx = { top_arity = ar_map;
               local_arity = [];
               this_module = thism;
-              var_ctr = 0;
+              var_ctr = ref 0;
               scope = []
             } in
   let (ctx, vars, ast) = push_lams ctx ast in
