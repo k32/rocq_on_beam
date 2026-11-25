@@ -1,4 +1,6 @@
-;; FIXME: currently it requires the plugin to be installed
-
 (cram
- (deps %{lib:rocq_on_beam:rocq_on_beam_plugin.cmxs} %{lib:rocq_on_beam:META} simple.v))
+ (deps %{lib:rocq_on_beam:rocq_on_beam_plugin.cmxs}
+       %{lib:rocq_on_beam:META}
+       constr.v
+       local_lambdas.v
+       mutual_fix.v))

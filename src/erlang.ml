@@ -79,6 +79,7 @@ type ctx = {
     (* Module that the definition belongs to.
        Used to derive whether function references and calls are global or local *)
     this_module : ModPath.t;
+    this_function : global;
     (* Counter used to add prefix to the new variables.
        It is mutable as to make all variables unique,
        regadless of the AST traversal method.
@@ -325,15 +326,14 @@ and trans_constructor table ctx gl args =
 
 let decl_to_erlang ar_map table gl ast tp =
   let name = label_of_global gl in
-  let thism = Table.modpath_of_r gl in
   let ctx = { top_arity = ar_map;
               local_arity = [];
-              this_module = thism;
+              this_module = Table.modpath_of_r gl;
+              this_function = gl;
               var_ctr = ref 0;
               scope = []
             } in
   let (ctx, vars, ast) = push_lams ctx ast in
-  let ctx = {ctx with top_arity = ar_map} in
   { name = Atom (Id.to_string name);
     args = vars;
     ast = ml_to_erlang table ctx None ast
