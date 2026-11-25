@@ -45,10 +45,8 @@ let keywords =
     ]
     Id.Set.empty
 
-(* FIXME: These two guys should be gone in the final product *)
+(* FIXME: This guy should be gone in the final product *)
 let unsup what = ELit (EAtom (Atom ("Not supported: " ^ what)))
-
-let panic what = CErrors.user_err Pp.(what)
 
 (* Format constructor name for debugging *)
 let mlconstr_name = function
@@ -96,15 +94,18 @@ type ctx = {
     scope : var list;
   }
 
+let panic {this_function = f} what =
+  CErrors.user_err Pp.(str "In " ++ GlobRef.print f.glob ++ str ": " ++ what)
+
 (* Resolve a de Brujin index into a variable name *)
-let lookup_var {scope = sc} idx =
+let lookup_var ctx idx =
   let idx = idx - 1 in (* de Brujin indices in MiniML are 1-based *)
-  match List.nth_opt sc idx with
+  match List.nth_opt ctx.scope idx with
   | Some v ->
      v
   | None ->
-     panic (str "de Brujin index overflow: " ++ int idx ++
-              str " in scope " ++ prlist_with_sep spc pr_var sc)
+     panic ctx (str "de Brujin index overflow: " ++ int idx ++
+                  str " in scope " ++ prlist_with_sep spc pr_var ctx.scope)
 
 let mlvar_to_name = function
   | Dummy ->
@@ -190,12 +191,13 @@ let push_arity gl ast =
 let push_loc_arity var arity {local_arity = l} =
   l := (var, arity) :: !l
 
-let gl_arity {top_arity = m} gl =
-  match KerName.Map.find_opt (Table.repr_of_r gl) m with
+let gl_arity ctx gl =
+  match KerName.Map.find_opt (Table.repr_of_r gl) ctx.top_arity with
   | Some a ->
      a
   | None ->
-     panic (str "Reference to an unknown top-level function " ++ str (global_name gl))
+     panic ctx (str "Reference to an unknown top-level function " ++
+                  str (global_name gl))
 
 let loc_arity ctx idx =
   let var = lookup_var ctx idx in
@@ -204,8 +206,8 @@ let loc_arity ctx idx =
   | Some (_, a) ->
      a
   | None ->
-     panic (str "Reference to an unknown local function " ++ pr_var var ++
-              str ". Bound: " ++ prlist_with_sep spc (fun (v, _) -> pr_var v) l)
+     panic ctx (str "Reference to an unknown local function " ++ pr_var var ++
+                  str ". Bound: " ++ prlist_with_sep spc (fun (v, _) -> pr_var v) l)
 
 let is_local {this_function = this} gl =
   let m = Table.modpath_of_r gl in
@@ -333,7 +335,7 @@ and tr_app table ctx callee args =
                        List.length args) in
        (ECallV (lookup_var ctx var), arity)
     | what ->
-       panic (str "Unsupported type of callee " ++ str (mlconstr_name what))
+       panic ctx (str "Unsupported type of callee " ++ str (mlconstr_name what))
   in
   (* FIXME: eta conversion *)
   EApply (callee, List.map (ml_to_erlang table ctx None) args)
@@ -372,9 +374,9 @@ let pp_top_fun ar_map table gl ast tp =
 
 let pp_decl table = function
   | Dind _ ->
-     panic (str "Extraction of inductives is not supported")
+     CErrors.user_err (str "Extraction of inductives is not supported")
   | Dtype _ ->
-     panic (str "Extraction of types is not supported")
+     CErrors.user_err (str "Extraction of types is not supported")
   | Dterm (gl, ast, tp) ->
      let ar_map = push_arity gl ast KerName.Map.empty in
      pp_top_fun ar_map table gl ast tp
@@ -390,7 +392,7 @@ let file_naming state mp = file_of_modfile (State.get_table state) mp
 let id_of_filename f =
   try Id.of_string f
   with CErrors.UserError _ ->
-    panic (str "Extraction: provided filename is not a valid identifier: " ++ quote (qstring f))
+    CErrors.user_err (str "Extraction: provided filename is not a valid identifier: " ++ quote (qstring f))
 
 let preamble table mod_name comment used_modules usf = str ""
 
