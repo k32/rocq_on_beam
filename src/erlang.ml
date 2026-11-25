@@ -76,9 +76,7 @@ type ctx = {
     top_arity : int KerName.Map.t;
     (* Local lambda arities *)
     local_arity : (var * int) list;
-    (* Module that the definition belongs to.
-       Used to derive whether function references and calls are global or local *)
-    this_module : ModPath.t;
+    (* Function that is being extracted: *)
     this_function : global;
     (* Counter used to add prefix to the new variables.
        It is mutable as to make all variables unique,
@@ -194,9 +192,9 @@ let loc_arity ctx idx =
           str ". Bound: " ++ prlist_with_sep spc (fun (v, _) -> pr_var v) ctx.local_arity);
      1
 
-let is_local {this_module = this} gl =
+let is_local {this_function = this} gl =
   let m = Table.modpath_of_r gl in
-  if ModPath.equal this m then
+  if ModPath.equal (Table.modpath_of_r this) m then
     None
   else
     Some m
@@ -328,7 +326,6 @@ let decl_to_erlang ar_map table gl ast tp =
   let name = label_of_global gl in
   let ctx = { top_arity = ar_map;
               local_arity = [];
-              this_module = Table.modpath_of_r gl;
               this_function = gl;
               var_ctr = ref 0;
               scope = []
