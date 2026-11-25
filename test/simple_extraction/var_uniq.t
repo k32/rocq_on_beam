@@ -1,4 +1,8 @@
-  $ rocq compile -I ../../../install/default/lib/ var_uniq.v
+Extract:
+
+  $ rocq compile -I ../../../install/default/lib/ var_uniq.v > extr.hrl
+
+  $ cat extr.hrl
   't_all_var_suff_unique'(_a@0) ->
     _a@1 = case _a@0 of
              'O' ->
@@ -21,3 +25,10 @@
            end,
     _f@4(_f@4(_a@1)).
   
+
+Compile:
+  $ erlc extr.erl
+
+Run:
+  $ erl -pa . -noshell -eval "extr:run(t_all_var_suff_unique, [{'S', {'S', 'O'}}])"
+  {'Some',{'S',{'S','O'}}}

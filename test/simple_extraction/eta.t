@@ -1,4 +1,8 @@
-  $ rocq compile -I ../../../install/default/lib/ eta.v
+Extract:
+
+  $ rocq compile -I ../../../install/default/lib/ eta.v > extr.hrl
+
+  $ cat extr.hrl
   't_local_lam1'(_a@0) ->
     _f@1 = fun(_a@2) ->
              {'S', _a@2}
@@ -17,3 +21,10 @@
   't_apply_var2'(_f@0, _x@1, _y@2) ->
     _f@0(_f@0(_x@1, _y@2), _x@1).
   
+
+
+
+
+Compile:
+
+  $ erlc extr.erl

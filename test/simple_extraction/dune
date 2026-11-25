@@ -1,6 +1,7 @@
 (cram
  (deps %{lib:rocq_on_beam:rocq_on_beam_plugin.cmxs}
        %{lib:rocq_on_beam:META}
+       extr.erl
        constr.v
        var_uniq.v
        eta.v
