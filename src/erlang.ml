@@ -364,13 +364,12 @@ let pp_decl state mldecl =
   let mod_path = MPfile DirPath.empty in
   let gctx = tr_decl gctx mod_path None mldecl in
   match EStructMap.find (mod_path, None) gctx.modules with
-    {locals = fns} ->
-     pr_toplevels fns
+    {locals = fns} -> pr_toplevels fns
 
 (** Extraction of modules *)
 
-let rec pp_struct1 mod_path ctx = function
-  | (id, SEdecl d) ->
+let rec tr_struct1 mod_path (ctx : gctx) = function
+  | _, SEdecl d ->
      (match d with
       | Dterm (_, _, _) ->
          tr_decl ctx mod_path None d
@@ -378,17 +377,18 @@ let rec pp_struct1 mod_path ctx = function
          tr_decl ctx mod_path None d
       | _ ->
          ctx)
-  | (id, SEmodule {ml_mod_expr = MEstruct (mod_path, m)}) ->
-     pp_struct
-  | (id, _) ->
-     CErrors.user_err (str (Id.to_string id) ++ str " is unsupported module type")
+  | _, SEmodule {ml_mod_expr = MEstruct (mod_path, m)} ->
+     let f i gctx = tr_struct1 mod_path i gctx in
+     List.fold_left f ctx m
+  | _, _ ->
+     ctx
 
 let pp_struct state stcts =
   let ctx = { state = state;
               top_arity = KerName.Map.empty;
               modules = EStructMap.empty
             } in
-  let f ctx (mod_path, mstructs) = List.fold_left (pp_struct1 mod_path) ctx mstructs in
+  let f ctx (mod_path, mstructs) = List.fold_left (tr_struct1 mod_path) ctx mstructs in
   let ctx = List.fold_left f ctx stcts in
   let pr_mod _ m acc = pr_module m ++ fnl () ++ fnl () ++ acc in
   fold_modules pr_mod (mt ()) ctx
