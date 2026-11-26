@@ -24,7 +24,6 @@ Extract:
              end
            end,
     _f@4(_f@4(_a@1)).
-  
 
 Compile:
   $ erlc extr.erl
