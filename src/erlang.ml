@@ -332,7 +332,7 @@ let decl_to_erlang ar_map table gl ast tp =
     ast = ml_to_erlang ctx None ast
   }
 
-let tr_top_fun mod_path strct_id gl ast tp (gctx : gctx) =
+let tr_top_fun mod_path gl ast tp (gctx : gctx) =
   let name = pp_global_name gctx.state Term gl in
   if is_custom gl
   then
@@ -340,30 +340,27 @@ let tr_top_fun mod_path strct_id gl ast tp (gctx : gctx) =
   else
     let east = decl_to_erlang gctx.top_arity (State.get_table gctx.state) gl ast tp in
     (* FIXME: exported *)
-    push_defn mod_path strct_id true east gctx
+    push_defn mod_path true east gctx
 
-let tr_decl gctx mod_path strct_id = function
+let tr_decl gctx mod_path = function
   | Dind _ ->
      CErrors.user_err (str "Extraction of inductives is not supported")
   | Dtype _ ->
      CErrors.user_err (str "Extraction of types is not supported")
   | Dterm (gl, ast, tp) ->
      let gctx = push_arity gl ast gctx in
-     tr_top_fun mod_path strct_id gl ast tp gctx
+     tr_top_fun mod_path gl ast tp gctx
   | Dfix (gls, asts, tps) ->
      let f i gl = push_arity gl asts.(i) in
      let gctx = fold_lefti f gctx gls in
-     let f i gl = tr_top_fun mod_path strct_id gl asts.(i) tps.(i) in
+     let f i gl = tr_top_fun mod_path gl asts.(i) tps.(i) in
      fold_lefti f gctx gls
 
 let pp_decl state mldecl =
-  let gctx = { state;
-               top_arity = KerName.Map.empty;
-               modules = EStructMap.empty;
-             } in
+  let gctx = new_gctx state in
   let mod_path = MPfile DirPath.empty in
-  let gctx = tr_decl gctx mod_path None mldecl in
-  match EStructMap.find (mod_path, None) gctx.modules with
+  let gctx = tr_decl gctx mod_path mldecl in
+  match ModPath.Map.find mod_path gctx.modules with
     {locals = fns} -> pr_toplevels fns
 
 (** Extraction of modules *)
@@ -372,9 +369,9 @@ let rec tr_struct1 mod_path (ctx : gctx) = function
   | _, SEdecl d ->
      (match d with
       | Dterm (_, _, _) ->
-         tr_decl ctx mod_path None d
+         tr_decl ctx mod_path d
       | Dfix (_, _, _) ->
-         tr_decl ctx mod_path None d
+         tr_decl ctx mod_path d
       | _ ->
          ctx)
   | _, SEmodule {ml_mod_expr = MEstruct (mod_path, m)} ->
@@ -384,10 +381,7 @@ let rec tr_struct1 mod_path (ctx : gctx) = function
      ctx
 
 let pp_struct state stcts =
-  let ctx = { state = state;
-              top_arity = KerName.Map.empty;
-              modules = EStructMap.empty
-            } in
+  let ctx = new_gctx state in
   let f ctx (mod_path, mstructs) = List.fold_left (tr_struct1 mod_path) ctx mstructs in
   let ctx = List.fold_left f ctx stcts in
   let pr_mod _ m acc = pr_module m ++ fnl () ++ fnl () ++ acc in
