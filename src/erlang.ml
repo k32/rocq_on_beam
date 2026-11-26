@@ -33,13 +33,12 @@ let mlconstr_name = function
   | MLstring _ -> "MLstring"
   | MLparray (_, _) -> "MLparray"
 
-(* Key-value list used to lookup arity of locally defined lambdas.
-   Arguments of the top-level definition are [None],
-   as we don't have the info about them.
-   [None] skips the arity check and eta-conversion,
-   and assumes that arity of the callback = number of the applied arguments,
-   i.e. the value is properly curried *)
-type loc_arity = (var * int option) list
+(* A map used to lookup arity of locally defined lambdas. Arguments of
+   the top-level definition are [None], since we don't have the info
+   about them. [None] eludes the arity check and eta-conversion, and
+   assumes that arity of the callback = number of the applied
+   arguments, i.e. the value is properly curried *)
+type loc_arity = (int option) EVarMap.t
 
 (** Translation of terms to Erlang AST format *)
 
@@ -157,7 +156,7 @@ let push_arity gl ast =
   KerName.Map.add (Table.repr_of_r gl) arity
 
 let push_loc_arity var arity {local_arity = l} =
-  l := (var, arity) :: !l
+  l := EVarMap.add var arity !l
 
 let gl_arity ctx gl =
   match KerName.Map.find_opt (Table.repr_of_r gl) ctx.top_arity with
@@ -170,12 +169,11 @@ let gl_arity ctx gl =
 let loc_arity ctx idx =
   let var = lookup_var ctx idx in
   let l = !(ctx.local_arity) in
-  match List.find_opt (fun (i, _) -> i = var) l with
-  | Some (_, a) ->
+  match EVarMap.find_opt var l with
+  | Some a ->
      a
   | None ->
-     panic ctx (str "Reference to an unknown local function " ++ pr_var var ++
-                  str ". Bound: " ++ prlist_with_sep spc (fun (v, _) -> pr_var v) l)
+     panic ctx (str "Reference to an unknown local function " ++ pr_var var)
 
 let is_local {this_function = this} gl =
   let m = Table.modpath_of_r gl in
@@ -322,7 +320,7 @@ let decl_to_erlang ar_map table gl ast tp =
   let name = label_of_global gl in
   let ctx = { table;
               top_arity = ar_map;
-              local_arity = ref [];
+              local_arity = ref EVarMap.empty;
               this_function = gl;
               var_ctr = ref 0;
               scope = []
@@ -360,25 +358,28 @@ let pp_decl table = function
 
 (** Extraction of modules *)
 
-let glue = prlist_strict (fun i -> i)
-
-let pp_struct2 table mod_path top_arity = function
+let pp_struct1 mod_path ctx = function
   | (id, SEdecl d) ->
-     (top_arity, str "%%   decl " ++ str (Id.to_string id) ++ fnl ())
+     let defn = { name = Atom "fixme";
+                  args = [];
+                  ast = ELit (EAtom (Atom "fixme"));
+                } in
+     push_defn mod_path None true defn ctx
   | (id, SEmodule m) ->
-     let txt = str "%%   " ++ str (Id.to_string id) ++ fnl () in
-     (top_arity, txt)
+     ctx
   | (id, _) ->
      CErrors.user_err (str (Id.to_string id) ++ str " is unsupported module type")
 
-let pp_struct1 table top_arity (mod_path, mstructs) =
-  let (top_arity, l) = List.fold_left_map (pp_struct2 table mod_path) top_arity mstructs in
-  let txt = v 0 (str "%% ModPath: " ++ ModPath.print mod_path ++ fnl () ++ h (glue l)) in
-  (top_arity, txt)
-
 let pp_struct state stcts =
-  let (_, l) = List.fold_left_map (pp_struct1 (State.get_table state)) KerName.Map.empty stcts in
-  glue l
+  let ctx = { table = State.get_table state;
+              top_arity = KerName.Map.empty;
+              modules = EStructMap.empty
+            } in
+  let f ctx (mod_path, mstructs) = List.fold_left (pp_struct1 mod_path) ctx mstructs in
+  let ctx = List.fold_left f ctx stcts in
+  let pr_mod _ m acc =
+    pr_module m ++ fnl () ++ fnl () ++ acc in
+  fold_modules pr_mod (mt ()) ctx
 
 (** Language definition *)
 

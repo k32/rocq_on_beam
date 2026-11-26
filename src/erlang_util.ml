@@ -2,6 +2,24 @@ open Extraction_plugin
 open Names
 open Erlang_ast
 
+(** Storage for local Erlang variables *)
+
+module EVar =
+struct
+  type t = var
+
+  let compare (Var (n1, i1)) (Var (n2, i2)) =
+    match compare i1 i2 with
+    | 0 ->
+       String.compare n1 n2
+    | v ->
+       v
+end
+
+module EVarMap = Map.Make(EVar)
+
+(** Storage for keyed by module path and (optionally) structure
+    name *)
 module EStruct =
 struct
   type t = ModPath.t * Id.t option
@@ -21,6 +39,8 @@ end
 module EStructMap = Map.Make(EStruct)
 
 type e_mod_map = e_module EStructMap.t
+
+(** "Global" context used for recursive extraction *)
 
 type gctx = {
     table : Table.t;
@@ -54,4 +74,4 @@ let push_defn mod_path strct_id exported (defn : e_defn) ctx =
           }) in
   {ctx with modules = EStructMap.add key m ctx.modules}
 
-let fold_modules f a {modules = m} = EStructMap.fold f a m
+let fold_modules f a {modules = m} = EStructMap.fold f m a
