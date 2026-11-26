@@ -5,4 +5,5 @@
        constr.v
        var_uniq.v
        eta.v
-       mutual_fix.v))
+       mutual_fix.v
+       struct.v))

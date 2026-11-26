@@ -78,6 +78,7 @@ type loc_arity = (var * int option) list
 
 (* Context used during translation of top-level functions *)
 type ctx = {
+    table : Table.t;
     (* Arities of previously extracted top-level definitions *)
     top_arity : int KerName.Map.t;
     (* Local lambda arities *)
@@ -240,24 +241,24 @@ let rec tr_pattern ctx evars = function
      | l ->
         EPTuple (tag :: List.map (fun i -> EPVar i) l)
 
-let rec ml_to_erlang table ctx bound_to all_ast =
+let rec ml_to_erlang ctx bound_to all_ast =
   match all_ast with
   | MLcons (tp, gl, args) ->
-     tr_constructor table ctx gl args
+     tr_constructor ctx gl args
   | MLtuple elems ->
-     ETuple (List.map (ml_to_erlang table ctx None) elems)
+     ETuple (List.map (ml_to_erlang ctx None) elems)
   | MLuint int ->
      ELit (EInt (Z.of_int64 (Uint63.to_int64 int)))
   | MLfloat netyx ->
      ELit (EFloat netyx)
   | MLletin (ident, val_ast, in_ast) ->
      let (v, ctx') = push_var ident ctx in
-     let value = ml_to_erlang table ctx (Some v) val_ast in
-     ELet (v, value, ml_to_erlang table ctx' None in_ast)
+     let value = ml_to_erlang ctx (Some v) val_ast in
+     ELet (v, value, ml_to_erlang ctx' None in_ast)
   | MLapp (callee, args) ->
-     tr_app table ctx callee args
+     tr_app ctx callee args
   | MLcase (tp, scrutinee, branches) ->
-     tr_case table ctx bound_to tp scrutinee branches
+     tr_case ctx bound_to tp scrutinee branches
   | MLrel idx ->
      EVar (lookup_var ctx idx)
   | MLglob gl ->
@@ -265,7 +266,7 @@ let rec ml_to_erlang table ctx bound_to all_ast =
   | MLfix  (i, ids, defs) ->
      unsup "MLfix"
   | MLlam (_, _) ->
-     tr_lam table ctx bound_to all_ast
+     tr_lam ctx bound_to all_ast
   | MLexn str ->
      unsup "MLexn"
   | MLdummy kill_reason ->
@@ -279,18 +280,18 @@ let rec ml_to_erlang table ctx bound_to all_ast =
   | MLparray (asts, ast) ->
      unsup "MLparray"
 
-and tr_case table ctx bound_to tp scrutinee branches =
-  ECase (ml_to_erlang table ctx None scrutinee,
-         List.map (tr_branch table ctx) (Array.to_list branches))
+and tr_case ctx bound_to tp scrutinee branches =
+  ECase (ml_to_erlang ctx None scrutinee,
+         List.map (tr_branch ctx) (Array.to_list branches))
 
-and tr_lam table ctx bound_to ast =
+and tr_lam ctx bound_to ast =
   let (ctx, vars, ast) = push_lams ctx ast in
   (match bound_to with
    | None ->
       ()
    | Some var ->
       push_loc_arity var (Some (List.length vars)) ctx);
-  EFun (vars, ml_to_erlang table ctx None ast)
+  EFun (vars, ml_to_erlang ctx None ast)
 
 and tr_global ctx gl =
   (* TODO: distinguish global / local fun references - this is
@@ -304,13 +305,13 @@ and tr_global ctx gl =
   | None ->
      ELit (EFunRefL (Atom f, a))
 
-and tr_branch table ctx (vars, pat, ast) =
+and tr_branch ctx (vars, pat, ast) =
   let (evars, ctx) = push_vars ctx vars in
   ( tr_pattern ctx evars pat
-  , ml_to_erlang table ctx None ast
+  , ml_to_erlang ctx None ast
   )
 
-and tr_app table ctx callee args =
+and tr_app ctx callee args =
   let (callee, arity) =
     match callee with
     | MLglob gl ->
@@ -338,19 +339,20 @@ and tr_app table ctx callee args =
        panic ctx (str "Unsupported type of callee " ++ str (mlconstr_name what))
   in
   (* FIXME: eta conversion *)
-  EApply (callee, List.map (ml_to_erlang table ctx None) args)
+  EApply (callee, List.map (ml_to_erlang ctx None) args)
 
-and tr_constructor table ctx gl args =
+and tr_constructor ctx gl args =
   let tag = ELit (EAtom (Atom (Id.to_string (label_of_global gl)))) in
   match args with
   | [] ->
      tag
   | l ->
-     ETuple (tag :: List.map (ml_to_erlang table ctx None) l)
+     ETuple (tag :: List.map (ml_to_erlang ctx None) l)
 
 let decl_to_erlang ar_map table gl ast tp =
   let name = label_of_global gl in
-  let ctx = { top_arity = ar_map;
+  let ctx = { table;
+              top_arity = ar_map;
               local_arity = ref [];
               this_function = gl;
               var_ctr = ref 0;
@@ -360,7 +362,7 @@ let decl_to_erlang ar_map table gl ast tp =
   List.iter (fun v -> push_loc_arity v None ctx) vars;
   { name = Atom (Id.to_string name);
     args = vars;
-    ast = ml_to_erlang table ctx None ast
+    ast = ml_to_erlang ctx None ast
   }
 
 let pp_top_fun ar_map table gl ast tp =
@@ -396,7 +398,30 @@ let id_of_filename f =
 
 let preamble table mod_name comment used_modules usf = str ""
 
-let pp_struct table stcts = str "TODO"
+type gctx = {
+    table : Table.t;
+    top_arity : int KerName.Map.t;
+}
+
+let glue = prlist_strict (fun i -> i)
+
+let pp_struct2 table mod_path top_arity = function
+  | (id, SEdecl d) ->
+     (top_arity, str "%%   decl " ++ str (Id.to_string id) ++ fnl ())
+  | (id, SEmodule m) ->
+     let txt = str "%%   " ++ str (Id.to_string id) ++ fnl () in
+     (top_arity, txt)
+  | (id, _) ->
+     CErrors.user_err (str (Id.to_string id) ++ str " is unsupported module type")
+
+let pp_struct1 table top_arity (mod_path, mstructs) =
+  let (top_arity, l) = List.fold_left_map (pp_struct2 table mod_path) top_arity mstructs in
+  let txt = v 0 (str "%% ModPath: " ++ ModPath.print mod_path ++ fnl () ++ h (glue l)) in
+  (top_arity, txt)
+
+let pp_struct state stcts =
+  let (_, l) = List.fold_left_map (pp_struct1 (State.get_table state)) KerName.Map.empty stcts in
+  glue l
 
 let erlang_descr =
   {
@@ -408,7 +433,7 @@ let erlang_descr =
     sig_suffix = None;
     sig_preamble = (fun _ _ _ _ _ -> mt ());
     pp_sig = (fun _ _ -> mt ());
-    pp_decl = pp_decl;
+    pp_decl;
     unquote = (fun s -> s);
     upper_types = false;
     char_type = Some "binary()";
