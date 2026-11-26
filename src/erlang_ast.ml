@@ -54,7 +54,7 @@ type e_defn = {
 type e_module = {
     name : atom;
     exports : e_local list;
-    locals : e_defn array
+    locals : e_defn list;
 }
 
 let escape_atom s =
@@ -142,7 +142,7 @@ let pr_toplevel = function
 
 let pr_toplevels fns =
   let sep _ = brk (0, -1000) ++ cut () in
-  v 0 (prvect_with_sep sep pr_toplevel fns)
+  v 0 (prlist_with_sep sep pr_toplevel fns)
 
 let pr_mod_preamble m =
   h (str "-module" ++ surround (pr_atom m) ++ str ".") ++ fnl ()

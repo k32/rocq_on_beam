@@ -8,42 +8,7 @@ open Miniml
 open Mlutil
 open Common
 open Erlang_ast
-
-let keywords =
-  List.fold_right
-    (fun s -> Id.Set.add (Id.of_string s))
-    [
-      "after";
-      "and";
-      "andalso";
-      "band";
-      "begin";
-      "bnot";
-      "bor";
-      "bsl";
-      "bsr";
-      "bxor";
-      "case";
-      "catch";
-      "cond";
-      "div";
-      "else";
-      "end";
-      "fun";
-      "if";
-      "let";
-      "maybe";
-      "not";
-      "of";
-      "or";
-      "orelse";
-      "receive";
-      "rem";
-      "try";
-      "when";
-      "xor";
-    ]
-    Id.Set.empty
+open Erlang_util
 
 (* FIXME: This guy should be gone in the final product *)
 let unsup what = ELit (EAtom (Atom ("Not supported: " ^ what)))
@@ -75,6 +40,8 @@ let mlconstr_name = function
    and assumes that arity of the callback = number of the applied arguments,
    i.e. the value is properly curried *)
 type loc_arity = (var * int option) list
+
+(** Translation of terms to Erlang AST format *)
 
 (* Context used during translation of top-level functions *)
 type ctx = {
@@ -349,6 +316,8 @@ and tr_constructor ctx gl args =
   | l ->
      ETuple (tag :: List.map (ml_to_erlang ctx None) l)
 
+(** Extraction of top-level definitions *)
+
 let decl_to_erlang ar_map table gl ast tp =
   let name = label_of_global gl in
   let ctx = { table;
@@ -389,19 +358,7 @@ let pp_decl table = function
      let sep _ = brk (0, -1000) ++ cut () in
      prvecti_with_sep sep f gls
 
-let file_naming state mp = file_of_modfile (State.get_table state) mp
-
-let id_of_filename f =
-  try Id.of_string f
-  with CErrors.UserError _ ->
-    CErrors.user_err (str "Extraction: provided filename is not a valid identifier: " ++ quote (qstring f))
-
-let preamble table mod_name comment used_modules usf = str ""
-
-type gctx = {
-    table : Table.t;
-    top_arity : int KerName.Map.t;
-}
+(** Extraction of modules *)
 
 let glue = prlist_strict (fun i -> i)
 
@@ -422,6 +379,28 @@ let pp_struct1 table top_arity (mod_path, mstructs) =
 let pp_struct state stcts =
   let (_, l) = List.fold_left_map (pp_struct1 (State.get_table state)) KerName.Map.empty stcts in
   glue l
+
+(** Language definition *)
+
+let file_naming state mp = file_of_modfile (State.get_table state) mp
+
+let keywords =
+  List.fold_right
+    (fun s -> Id.Set.add (Id.of_string s))
+    [
+      "after"; "and"; "andalso"; "band"; "begin"; "bnot"; "bor";
+      "bsl"; "bsr"; "bxor"; "case"; "catch"; "cond"; "div"; "else";
+      "end"; "fun"; "if"; "let"; "maybe"; "not"; "of"; "or";
+      "orelse"; "receive"; "rem"; "try"; "when"; "xor";
+    ]
+    Id.Set.empty
+
+let preamble table mod_name comment used_modules usf = mt ()
+
+let id_of_filename f =
+  try Id.of_string f
+  with CErrors.UserError _ ->
+    CErrors.user_err (str "Extraction: provided filename is not a valid identifier: " ++ quote (qstring f))
 
 let erlang_descr =
   {
