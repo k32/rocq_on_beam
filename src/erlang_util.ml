@@ -1,4 +1,5 @@
 open Extraction_plugin
+open Common
 open Names
 open Erlang_ast
 
@@ -43,7 +44,7 @@ type e_mod_map = e_module EStructMap.t
 (** "Global" context used for recursive extraction *)
 
 type gctx = {
-    table : Table.t;
+    state : State.t;
     top_arity : int KerName.Map.t;
     modules : e_mod_map;
 }
@@ -75,3 +76,8 @@ let push_defn mod_path strct_id exported (defn : e_defn) ctx =
   {ctx with modules = EStructMap.add key m ctx.modules}
 
 let fold_modules f a {modules = m} = EStructMap.fold f m a
+
+let fold_lefti f acc a =
+  let acc = ref acc in
+  Array.iteri (fun i x -> acc := f i x !acc) a;
+  !acc

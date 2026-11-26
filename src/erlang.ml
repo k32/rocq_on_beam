@@ -146,14 +146,14 @@ let global_name (r : global) =
   | None -> s
   | Some code -> s ^ "_" ^ code
 
-let push_arity gl ast =
+let push_arity gl ast (gctx : gctx) =
   let rec go acc = function
     | MLlam (_, ast) ->
        go (acc + 1) ast
     | _ ->
        acc in
   let arity = go 0 ast in
-  KerName.Map.add (Table.repr_of_r gl) arity
+  {gctx with top_arity = KerName.Map.add (Table.repr_of_r gl) arity gctx.top_arity}
 
 let push_loc_arity var arity {local_arity = l} =
   l := EVarMap.add var arity !l
@@ -332,53 +332,65 @@ let decl_to_erlang ar_map table gl ast tp =
     ast = ml_to_erlang ctx None ast
   }
 
-let pp_top_fun ar_map table gl ast tp =
-  let name = pp_global_name table Term gl in
+let tr_top_fun mod_path strct_id gl ast tp (gctx : gctx) =
+  let name = pp_global_name gctx.state Term gl in
   if is_custom gl
   then
     CErrors.user_err Pp.(str "Cannot extract native function " ++ str name)
   else
-    let east = decl_to_erlang ar_map (State.get_table table) gl ast tp in
-    v 0 (pr_toplevel east ++ brk (0, -1000))
+    let east = decl_to_erlang gctx.top_arity (State.get_table gctx.state) gl ast tp in
+    (* FIXME: exported *)
+    push_defn mod_path strct_id true east gctx
 
-let pp_decl table = function
+let tr_decl gctx mod_path strct_id = function
   | Dind _ ->
      CErrors.user_err (str "Extraction of inductives is not supported")
   | Dtype _ ->
      CErrors.user_err (str "Extraction of types is not supported")
   | Dterm (gl, ast, tp) ->
-     let ar_map = push_arity gl ast KerName.Map.empty in
-     pp_top_fun ar_map table gl ast tp
+     let gctx = push_arity gl ast gctx in
+     tr_top_fun mod_path strct_id gl ast tp gctx
   | Dfix (gls, asts, tps) ->
-     let f (i, acc) gl = (i + 1, push_arity gl asts.(i) acc) in
-     let (_, ar_map) = Array.fold_left f (0, KerName.Map.empty) gls in
-     let f i gl = pp_top_fun ar_map table gl asts.(i) tps.(i) in
-     let sep _ = brk (0, -1000) ++ cut () in
-     prvecti_with_sep sep f gls
+     let f i gl = push_arity gl asts.(i) in
+     let gctx = fold_lefti f gctx gls in
+     let f i gl = tr_top_fun mod_path strct_id gl asts.(i) tps.(i) in
+     fold_lefti f gctx gls
+
+let pp_decl state mldecl =
+  let gctx = { state;
+               top_arity = KerName.Map.empty;
+               modules = EStructMap.empty;
+             } in
+  let mod_path = MPfile DirPath.empty in
+  let gctx = tr_decl gctx mod_path None mldecl in
+  match EStructMap.find (mod_path, None) gctx.modules with
+    {locals = fns} ->
+     pr_toplevels fns
 
 (** Extraction of modules *)
 
-let pp_struct1 mod_path ctx = function
+let rec pp_struct1 mod_path ctx = function
   | (id, SEdecl d) ->
-     let defn = { name = Atom "fixme";
-                  args = [];
-                  ast = ELit (EAtom (Atom "fixme"));
-                } in
-     push_defn mod_path None true defn ctx
-  | (id, SEmodule m) ->
-     ctx
+     (match d with
+      | Dterm (_, _, _) ->
+         tr_decl ctx mod_path None d
+      | Dfix (_, _, _) ->
+         tr_decl ctx mod_path None d
+      | _ ->
+         ctx)
+  | (id, SEmodule {ml_mod_expr = MEstruct (mod_path, m)}) ->
+     pp_struct
   | (id, _) ->
      CErrors.user_err (str (Id.to_string id) ++ str " is unsupported module type")
 
 let pp_struct state stcts =
-  let ctx = { table = State.get_table state;
+  let ctx = { state = state;
               top_arity = KerName.Map.empty;
               modules = EStructMap.empty
             } in
   let f ctx (mod_path, mstructs) = List.fold_left (pp_struct1 mod_path) ctx mstructs in
   let ctx = List.fold_left f ctx stcts in
-  let pr_mod _ m acc =
-    pr_module m ++ fnl () ++ fnl () ++ acc in
+  let pr_mod _ m acc = pr_module m ++ fnl () ++ fnl () ++ acc in
   fold_modules pr_mod (mt ()) ctx
 
 (** Language definition *)
