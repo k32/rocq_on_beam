@@ -1,11 +1,13 @@
   $ rocq compile -I ../../../install/default/lib/ struct.v
   -module('struct.m').
+  -compile(no_auto_import).
   -export(['foo'/1]).
   
   'foo'(_a@0) ->
     {'pair', _a@0, _a@0}.
   
   -module('struct').
+  -compile(no_auto_import).
   -export(['bar'/1, 'hi'/0]).
   
   'bar'(_a@0) ->
@@ -18,6 +20,7 @@
     {'S', 'O'}.
   
   -module('Corelib.Init.Nat').
+  -compile(no_auto_import).
   -export(['add'/2]).
   
   'add'(_n@0, _m@1) ->

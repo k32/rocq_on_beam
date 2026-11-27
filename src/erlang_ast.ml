@@ -145,7 +145,8 @@ let pr_toplevels fns =
   v 0 (prlist_with_sep sep pr_toplevel fns)
 
 let pr_mod_preamble m =
-  h (str "-module" ++ surround (pr_atom m) ++ str ".") ++ fnl ()
+  h (str "-module" ++ surround (pr_atom m) ++ str ".") ++ fnl () ++
+    str "-compile(no_auto_import)." ++ fnl ()
 
 let pr_exports e =
   let pr_export (f, a) = h (pr_atom f ++ str "/" ++ int a) in
@@ -158,3 +159,9 @@ let pr_module = function
      pr_mod_preamble m ++
        pr_exports e ++
        pr_toplevels fns
+
+let e_atom_literal a = ELit (EAtom (Atom a))
+
+let e_binary_literal bytes = ELit (EBinary bytes)
+
+let e_string_literal str = e_binary_literal (String.to_bytes str)

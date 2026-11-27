@@ -254,15 +254,18 @@ let rec ml_to_erlang ctx bound_to all_ast =
   | MLlam (_, _) ->
      tr_lam ctx bound_to all_ast
   | MLexn str ->
-     unsup "MLexn"
+     tr_exception str
   | MLdummy kill_reason ->
-     unsup "MLdummy"
-  | MLaxiom str ->
-     unsup "MLaxiom"
+     tr_kill_reason kill_reason
+  | MLaxiom axiom ->
+     (* Other languages translate as a runtime exception. We probably don't
+        want that *)
+     panic ctx (str "AXIOM TO BE REALIZED " ++ str axiom)
   | MLmagic ast ->
-     unsup "MLmagic"
+     (* Type coersion, e.g. [Object.magic] in OCaml. This is NOP in Erlang *)
+     ml_to_erlang ctx None ast
   | MLstring pstr ->
-     unsup "MLstring"
+     ELit (EBinary (String.to_bytes (Pstring.to_string pstr)))
   | MLparray (asts, ast) ->
      unsup "MLparray"
 
@@ -348,6 +351,21 @@ and tr_constructor ctx gl args =
      tag
   | l ->
      ETuple (tag :: List.map (ml_to_erlang ctx None) l)
+
+and tr_exception str =
+  let callee = ECallG ((Atom "erlang"), (Atom "error"), 1) in
+  let arg = ELit (EBinary (String.to_bytes str)) in
+  EApply (callee, [arg])
+
+and tr_kill_reason = function
+  | Ktype ->
+     e_atom_literal "~ROCQ_TYPE"
+  | Kprop ->
+     e_atom_literal "~ROCQ_PROP"
+  | Kimplicit (gl, i) ->
+     ETuple [e_atom_literal "~ROCQ_IMPLICIT";
+             e_string_literal (Id.to_string (label_of_global gl));
+             ELit (EInt (Z.of_int i))]
 
 (** Extraction of top-level definitions *)
 
@@ -446,7 +464,7 @@ let id_of_filename f =
 let erlang_descr =
   {
     keywords;
-    file_suffix = ".erl";
+    file_suffix = ".gluerl";
     file_naming = file_naming;
     preamble;
     pp_struct;

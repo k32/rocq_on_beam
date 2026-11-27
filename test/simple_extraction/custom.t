@@ -4,6 +4,7 @@ Extract:
 
   $ cat custom.erl
   -module('custom').
+  -compile(no_auto_import).
   -export(['t_call_custom'/1]).
   
   't_call_custom'(_a@0) ->
