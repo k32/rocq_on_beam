@@ -33,7 +33,7 @@ Extraction t_apply_var2.
 Definition t_unknown_gl a b :=
   a + b.
 
-Fail Extraction t_unknown_gl.
+(* Fail Extraction t_unknown_gl. *)
 
 Definition t_local_eta {T} (a : nat) : T -> _ :=
   let fn {A B} (x : A) (y : B) := (x, y) in

@@ -168,13 +168,15 @@ let global_name (r : global) =
   | Some code -> s ^ "_" ^ code
 
 let push_arity gl ast (gctx : gctx) =
+  let am = gctx.top_arity in
   let rec go acc = function
     | MLlam (_, ast) ->
        go (acc + 1) ast
     | _ ->
        acc in
   let arity = go 0 ast in
-  {gctx with top_arity = KerName.Map.add (Table.repr_of_r gl) arity gctx.top_arity}
+  am := KerName.Map.add (Table.repr_of_r gl) arity !am;
+  gctx
 
 let push_loc_arity var arity {local_arity = l} =
   l := EVarMap.add var arity !l
@@ -390,7 +392,7 @@ let tr_top_fun mod_path gl ast tp (gctx : gctx) =
   then
     gctx
   else
-    let east = decl_to_erlang gctx.top_arity (State.get_table gctx.state) gl ast tp in
+    let east = decl_to_erlang !(gctx.top_arity) (State.get_table gctx.state) gl ast tp in
     (* FIXME: exported *)
     push_defn mod_path true east gctx
 

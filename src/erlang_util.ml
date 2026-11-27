@@ -21,17 +21,21 @@ module EVarMap = Map.Make(EVar)
 
 type e_mod_map = e_module ModPath.Map.t
 
+type top_arity_map = int KerName.Map.t
+
 (** "Global" context used for recursive extraction *)
 
 type gctx = {
     state : State.t;
-    top_arity : int KerName.Map.t;
+    top_arity : top_arity_map ref;
     modules : e_mod_map;
 }
 
+let gl_top_arity : top_arity_map ref = ref KerName.Map.empty
+
 let new_gctx state =
   { state = state;
-    top_arity = KerName.Map.empty;
+    top_arity = gl_top_arity;
     modules = ModPath.Map.empty
   }
 
