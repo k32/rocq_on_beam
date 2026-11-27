@@ -25,10 +25,10 @@ Inductive NRef : Set := nref (env : Env).
 Definition make_ref {env} : NRef :=
   nref env.
 
-Extract Constant make_ref => "erlang:make_ref".
+Extract Constant make_ref => "erlang:make_ref/0".
 
 Definition yield {env : Env} : unit :=
   match env with
   end.
 
-Extract Constant yield => "erlang:yield".
+Extract Constant yield => "erlang:yield/0".

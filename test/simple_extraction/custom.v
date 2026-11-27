@@ -6,7 +6,7 @@ Extraction Language Erlang.
 From Stdlib Require Import List.
 Import ListNotations.
 
-Extract Constant plus => "erlang:+".
+Extract Constant plus => "erlang:+/2".
 
 Definition t_call_custom a := a + a.
 

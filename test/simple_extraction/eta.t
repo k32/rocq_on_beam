@@ -17,6 +17,13 @@ Extract:
     _f@0(_f@0(_x@1)).
   't_apply_var2'(_f@0, _x@1, _y@2) ->
     _f@0(_f@0(_x@1, _y@2), _x@1).
+  't_local_eta'(_a@0) ->
+    _fn@1 = fun(_x@2, _y@3) ->
+              {'pair', _x@2, _y@3}
+            end,
+    fun(_eta@4) ->
+      _fn@1(_fn@1(_a@0, _a@0), _eta@4)
+    end.
 
 
 

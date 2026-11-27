@@ -84,11 +84,20 @@ let mlvar_to_name = function
      else
        ""
 
-let split_erl_name ctx s =
+let parse_erl_mfa ctx s =
   (* FIXME: handle atom escaping *)
-  match String.split_first ~sep:":" s with
-  | Some mf -> mf
-  | None -> panic ctx (str s ++ str " is not a valid Erlang module:function")
+  let panic () = panic ctx (str s ++ str " is not a valid Erlang m:f/a") in
+  match String.split_last ~sep:"/" s with
+  | Some (mf, a) ->
+     (match int_of_string_opt a with
+      | Some a ->
+         (match String.split_first ~sep:":" mf with
+          | Some (m, f) -> (m, f, a)
+          | None -> panic ())
+      | None ->
+         panic ())
+  | None ->
+     panic ()
 
 let ctx_fresh_id {var_ctr = ctr} =
   let fresh = !ctr in
@@ -127,6 +136,12 @@ let rec push_vars ctx vars =
        go ctx (ev :: acc) l in
   let (evars, ctx) = go ctx [] vars in
   (List.rev evars, ctx)
+
+let push_n_vars name n ctx =
+  let name = Id (Id.of_string name) in
+  let rec ids n = if n > 0 then name :: ids (n - 1)
+                  else [] in
+  push_vars ctx (ids n)
 
 let push_fix ctx =
   let fresh = ctx_fresh_id ctx in
@@ -287,8 +302,7 @@ and tr_app ctx callee args =
     match callee with
     | MLglob gl when is_custom gl ->
        let str = find_custom gl in
-       let arity = gl_arity ctx gl in
-       let (m, f) = split_erl_name ctx str in
+       let (m, f, arity) = parse_erl_mfa ctx str in
        (ECallG (Atom m, Atom f, arity), arity)
     | MLglob gl ->
        let arity = gl_arity ctx gl in
@@ -314,8 +328,18 @@ and tr_app ctx callee args =
     | what ->
        panic ctx (str "Unsupported type of callee " ++ str (mlconstr_name what))
   in
-  (* FIXME: eta conversion *)
-  EApply (callee, List.map (ml_to_erlang ctx None) args)
+  let delta = arity - List.length args in
+  let eargs = List.map (ml_to_erlang ctx None) args in
+  if delta = 0 then
+    EApply (callee, eargs)
+  else if delta > 0 then
+    (* η-abstraction *)
+    let (vars, _) = push_n_vars "eta" delta ctx in
+    let evars = List.map (fun i -> EVar i) vars in
+    EFun (vars, EApply (callee, List.append eargs evars))
+  else
+    panic ctx (int (-delta) ++ str " extra argument(s) are applied to " ++ pr_callee callee ++ spc () ++
+                 surround (prlist_with_sep pr_comma pr_ast eargs))
 
 and tr_constructor ctx gl args =
   let tag = ELit (EAtom (Atom (Id.to_string (label_of_global gl)))) in
@@ -346,8 +370,7 @@ let decl_to_erlang ar_map table gl ast tp =
 let tr_top_fun mod_path gl ast tp (gctx : gctx) =
   if is_custom gl
   then
-    (* Custom definitions are not extracted, but we still visit them to update the arity cache *)
-    push_arity gl ast gctx
+    gctx
   else
     let east = decl_to_erlang gctx.top_arity (State.get_table gctx.state) gl ast tp in
     (* FIXME: exported *)
