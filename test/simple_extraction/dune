@@ -6,4 +6,5 @@
        var_uniq.v
        eta.v
        mutual_fix.v
-       struct.v))
+       struct.v
+       custom.v))

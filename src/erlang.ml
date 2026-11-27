@@ -84,6 +84,12 @@ let mlvar_to_name = function
      else
        ""
 
+let split_erl_name ctx s =
+  (* FIXME: handle atom escaping *)
+  match String.split_first ~sep:":" s with
+  | Some mf -> mf
+  | None -> panic ctx (str s ++ str " is not a valid Erlang module:function")
+
 let ctx_fresh_id {var_ctr = ctr} =
   let fresh = !ctr in
   ctr := fresh + 1;
@@ -279,6 +285,11 @@ and tr_branch ctx (vars, pat, ast) =
 and tr_app ctx callee args =
   let (callee, arity) =
     match callee with
+    | MLglob gl when is_custom gl ->
+       let str = find_custom gl in
+       let arity = gl_arity ctx gl in
+       let (m, f) = split_erl_name ctx str in
+       (ECallG (Atom m, Atom f, arity), arity)
     | MLglob gl ->
        let arity = gl_arity ctx gl in
        (match is_local ctx gl with
@@ -333,10 +344,10 @@ let decl_to_erlang ar_map table gl ast tp =
   }
 
 let tr_top_fun mod_path gl ast tp (gctx : gctx) =
-  let name = pp_global_name gctx.state Term gl in
   if is_custom gl
   then
-    CErrors.user_err Pp.(str "Cannot extract native function " ++ str name)
+    (* Custom definitions are not extracted, but we still visit them to update the arity cache *)
+    push_arity gl ast gctx
   else
     let east = decl_to_erlang gctx.top_arity (State.get_table gctx.state) gl ast tp in
     (* FIXME: exported *)
